@@ -1,6 +1,4 @@
-// src/App.tsx
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LiveLiftScreen } from './components/LiveLiftScreen';
@@ -20,6 +18,8 @@ const TABS: { id: Screen; label: string; icon: string }[] = [
   { id: 'coach', label: 'COACH', icon: 'users' },
   { id: 'athletes', label: 'TEAM', icon: 'team' },
 ];
+
+const SIDEBAR_WIDTH = 200;
 
 function TabIcon({ type, active }: { type: string; active: boolean }) {
   const color = active ? 'var(--color-text-primary)' : 'var(--color-text-muted)';
@@ -55,83 +55,178 @@ function TabIcon({ type, active }: { type: string; active: boolean }) {
   return icons[type] || icons.bolt;
 }
 
+function useMediaQuery(minWidth: number): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(`(min-width: ${minWidth}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia(`(min-width: ${minWidth}px)`);
+    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [minWidth]);
+
+  return matches;
+}
+
 function AppContent() {
   const [screen, setScreen] = useState<Screen>('history');
   const { isInstallable, promptInstall } = usePWAInstall();
+  const isDesktop = useMediaQuery(1024);
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: 'var(--color-bg)' }}>
-      {/* PWA Install Banner */}
-      {isInstallable && (
-        <div
-          className="fixed top-0 left-0 right-0 z-50"
+    <div style={{ minHeight: '100dvh', backgroundColor: 'var(--color-bg)', display: 'flex' }}>
+      {/* Desktop sidebar */}
+      {isDesktop && (
+        <aside
           style={{
+            width: SIDEBAR_WIDTH,
+            flexShrink: 0,
+            backgroundColor: 'var(--color-surface)',
+            borderRight: '1px solid var(--color-border)',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'fixed',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 40,
+          }}
+        >
+          <div style={{ padding: 'var(--space-6)', borderBottom: '1px solid var(--color-border)' }}>
+            <span className="text-mono" style={{ color: 'var(--color-brand)', fontSize: '14px', fontWeight: 700 }}>
+              VBT<span style={{ color: 'var(--color-text-muted)' }}>TRACKER</span>
+            </span>
+          </div>
+
+          <nav style={{ flex: 1, padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setScreen(tab.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '10px var(--space-4)',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: screen === tab.id ? 'var(--color-brand)' : 'transparent',
+                  color: screen === tab.id ? '#000' : 'var(--color-text-muted)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)',
+                  fontSize: '14px',
+                  fontWeight: screen === tab.id ? 600 : 400,
+                  transition: 'background-color 0.15s, color 0.15s',
+                  textAlign: 'left',
+                  minHeight: '44px',
+                }}
+              >
+                <TabIcon type={tab.icon} active={screen === tab.id} />
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          {isInstallable && (
+            <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--color-border)' }}>
+              <button onClick={promptInstall} className="btn btn-pill btn-brand" style={{ width: '100%', fontSize: '12px' }}>
+                Install App
+              </button>
+            </div>
+          )}
+        </aside>
+      )}
+
+      {/* Main content area */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        marginLeft: isDesktop ? SIDEBAR_WIDTH : 0,
+        minHeight: '100dvh',
+      }}>
+        {/* PWA Install Banner (mobile only) */}
+        {isInstallable && !isDesktop && (
+          <div style={{
             backgroundColor: 'var(--color-surface)',
             borderBottom: '1px solid var(--color-border)',
             padding: 'var(--space-3) var(--space-4)',
-          }}
-        >
-          <div className="flex items-center justify-between" style={{ maxWidth: '600px', margin: '0 auto' }}>
-            <div>
-              <div className="text-caption font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                Install VBT Tracker
+          }}>
+            <div className="flex items-center justify-between" style={{ maxWidth: '600px', margin: '0 auto' }}>
+              <div>
+                <div className="text-caption font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                  Install VBT Tracker
+                </div>
+                <div className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
+                  Add to home screen for offline use
+                </div>
               </div>
-              <div className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
-                Add to home screen for offline use
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
               <button onClick={promptInstall} className="btn btn-pill btn-brand" style={{ padding: 'var(--space-2) var(--space-4)', fontSize: '12px' }}>
                 Install
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Screen content */}
-      <div style={{ paddingTop: isInstallable ? '60px' : 0 }}>
-        {screen === 'live' && <LiveLiftScreen />}
-        {screen === 'summary' && <PostSetSummaryScreen />}
-        {screen === 'history' && <SessionHistoryScreen />}
-        {screen === 'analytics' && <AnalyticsDashboard />}
-        {screen === 'athletes' && <AthleteProfilesScreen />}
-        {screen === 'coach' && <CoachModeScreen />}
+        {/* Screen content */}
+        <div style={{ flex: 1, maxWidth: isDesktop ? '960px' : '100%', width: '100%', margin: '0 auto' }}>
+          {screen === 'live' && <LiveLiftScreen />}
+          {screen === 'summary' && <PostSetSummaryScreen />}
+          {screen === 'history' && <SessionHistoryScreen />}
+          {screen === 'analytics' && <AnalyticsDashboard />}
+          {screen === 'athletes' && <AthleteProfilesScreen />}
+          {screen === 'coach' && <CoachModeScreen />}
+        </div>
       </div>
 
-      {/* Bottom tab bar */}
-      <div
-        className="fixed bottom-0 left-0 right-0"
-        style={{
-          backgroundColor: 'var(--color-bg)',
-          borderTop: '1px solid var(--color-border-subtle)',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        }}
-      >
-        <div className="container">
-          <div className="flex">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setScreen(tab.id)}
-                className="btn btn-ghost"
-                style={{
-                  flex: 1,
-                  padding: '10px 0',
-                  flexDirection: 'column',
-                  gap: '4px',
-                  borderRadius: 0,
-                  color: screen === tab.id ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                  borderBottom: screen === tab.id ? '2px solid var(--color-brand)' : '2px solid transparent',
-                }}
-              >
-                <TabIcon type={tab.icon} active={screen === tab.id} />
-                <span className="text-mono" style={{ fontSize: '9px' }}>{tab.label}</span>
-              </button>
-            ))}
+      {/* Mobile bottom tab bar */}
+      {!isDesktop && (
+        <div
+          className="fixed bottom-0 left-0 right-0"
+          style={{
+            backgroundColor: 'var(--color-bg)',
+            borderTop: '1px solid var(--color-border-subtle)',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+            zIndex: 50,
+          }}
+        >
+          <div className="container">
+            <div className="flex">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setScreen(tab.id)}
+                  style={{
+                    flex: 1,
+                    padding: '10px 0',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    borderRadius: 0,
+                    color: screen === tab.id ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer',
+                    border: 'none',
+                    borderBottomWidth: '2px',
+                    borderBottomStyle: 'solid',
+                    borderBottomColor: screen === tab.id ? 'var(--color-brand)' : 'transparent',
+                    minHeight: '60px',
+                    transition: 'color 0.15s',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <TabIcon type={tab.icon} active={screen === tab.id} />
+                  </div>
+                  <span className="text-mono" style={{ fontSize: '9px' }}>{tab.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Dev toggle */}
       {import.meta.env.DEV && (

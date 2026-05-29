@@ -110,7 +110,48 @@ router.get('/history', async (req: Request, res: Response) => {
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const offset = parseInt(req.query.offset as string) || 0;
 
+    // Optimized: use CTEs instead of correlated subqueries per row.
+    // This avoids N+1 queries on reps/sets and lets the planner use indexes.
     const result = await sql`
+      WITH filtered_sessions AS (
+        SELECT s.id
+        FROM sessions s
+        WHERE 1=1
+        ${athleteId ? sql`AND s.athlete_id = ${athleteId}` : sql``}
+        ${exercise ? sql`AND s.exercise ILIKE ${'%' + exercise + '%'}` : sql``}
+        ${from ? sql`AND s.start_time >= ${from}` : sql``}
+        ${to ? sql`AND s.start_time <= ${to}` : sql``}
+        ORDER BY s.start_time DESC
+        LIMIT ${limit} OFFSET ${offset}
+      ),
+      session_sets AS (
+        SELECT st.session_id, st.id as set_id, st.set_number
+        FROM sets st
+        JOIN filtered_sessions fs ON fs.id = st.session_id
+      ),
+      set_reps AS (
+        SELECT ss.session_id, ss.set_id, ss.set_number,
+          json_agg(
+            json_build_object(
+              'rep_number', r.rep_number,
+              'mean_velocity', r.mean_velocity,
+              'peak_velocity', r.peak_velocity,
+              'zone_result', r.zone_result
+            ) ORDER BY r.rep_number
+          ) as reps
+        FROM session_sets ss
+        LEFT JOIN reps r ON r.set_id = ss.set_id
+        GROUP BY ss.session_id, ss.set_id, ss.set_number
+      ),
+      rep_agg AS (
+        SELECT st2.session_id,
+          COUNT(r2.id) as total_reps,
+          AVG(r2.mean_velocity) as avg_velocity
+        FROM sets st2
+        LEFT JOIN reps r2 ON r2.set_id = st2.id
+        JOIN filtered_sessions fs2 ON fs2.id = st2.session_id
+        GROUP BY st2.session_id
+      )
       SELECT
         s.id,
         s.exercise,
@@ -121,41 +162,43 @@ router.get('/history', async (req: Request, res: Response) => {
         s.tags,
         a.name as athlete_name,
         p.name as program_name,
-        COALESCE(json_agg(
-          json_build_object(
-            'set_number', st.set_number,
-            'reps', (
-              SELECT json_agg(
-                json_build_object(
-                  'rep_number', r.rep_number,
-                  'mean_velocity', r.mean_velocity,
-                  'peak_velocity', r.peak_velocity,
-                  'zone_result', r.zone_result
-                ) ORDER BY r.rep_number
-              )
-              FROM reps r WHERE r.set_id = st.id
-            )
-          ) ORDER BY st.set_number
-        ) FILTER (WHERE st.id IS NOT NULL), '[]'::json) as sets,
-        (SELECT COUNT(*) FROM reps r2 JOIN sets st2 ON st2.id = r2.set_id WHERE st2.session_id = s.id) as total_reps,
-        (SELECT AVG(r3.mean_velocity) FROM reps r3 JOIN sets st3 ON st3.id = r3.set_id WHERE st3.session_id = s.id) as avg_velocity
-      FROM sessions s
+        COALESCE(
+          (SELECT json_agg(
+            json_build_object(
+              'set_number', sr.set_number,
+              'reps', sr.reps
+            ) ORDER BY sr.set_number
+          ) FROM set_reps sr WHERE sr.session_id = s.id),
+          '[]'::json
+        ) as sets,
+        COALESCE(ra.total_reps, 0) as total_reps,
+        ra.avg_velocity
+      FROM filtered_sessions fs
+      JOIN sessions s ON s.id = fs.id
       LEFT JOIN athletes a ON a.id = s.athlete_id
       LEFT JOIN programs p ON p.id = s.program_id
-      LEFT JOIN sets st ON st.session_id = s.id
+      LEFT JOIN rep_agg ra ON ra.session_id = s.id
+      ORDER BY s.start_time DESC
+    `;
+
+    // Get total count for pagination
+    const countResult = await sql`
+      SELECT COUNT(*) as total FROM sessions s
       WHERE 1=1
       ${athleteId ? sql`AND s.athlete_id = ${athleteId}` : sql``}
       ${exercise ? sql`AND s.exercise ILIKE ${'%' + exercise + '%'}` : sql``}
       ${from ? sql`AND s.start_time >= ${from}` : sql``}
       ${to ? sql`AND s.start_time <= ${to}` : sql``}
-      GROUP BY s.id, s.exercise, s.start_time, s.end_time, s.fatigue_flag, s.autoreg_score, s.tags, a.name, p.name
-      ORDER BY s.start_time DESC
-      LIMIT ${limit} OFFSET ${offset}
     `;
 
     res.json({
       sessions: result,
-      pagination: { limit, offset, count: result.length },
+      pagination: {
+        limit,
+        offset,
+        count: result.length,
+        total: parseInt(countResult[0]?.total) || 0,
+      },
     });
   } catch (error) {
     console.error('Error fetching session history:', error);

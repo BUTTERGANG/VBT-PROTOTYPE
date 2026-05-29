@@ -4,12 +4,13 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  base: './',  // relative paths so PWA works on any Replit URL
   plugins: [
     react(),
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['favicon.svg'],
       manifest: {
         name: 'VBT Tracker',
         short_name: 'VBT',
@@ -18,33 +19,19 @@ export default defineConfig({
         background_color: '#1a1a2e',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        start_url: './',
         icons: [
           {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png'
+            src: 'favicon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml'
           }
         ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/api\./i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 }
-            }
-          }
-        ]
+        // Don't cache API calls on same-origin (backend serves /api)
+        navigateFallbackDenylist: [/^\/api/]
       }
     })
   ],

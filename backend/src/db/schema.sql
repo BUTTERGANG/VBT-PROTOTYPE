@@ -86,6 +86,30 @@ CREATE TABLE IF NOT EXISTS velocity_readings (
 );
 
 -- ============================================================
+-- Unique constraints for upsert support (sync endpoint)
+-- ============================================================
+
+-- Sets: one set_number per session
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'uq_sets_session_setnum'
+  ) THEN
+    ALTER TABLE sets ADD CONSTRAINT uq_sets_session_setnum UNIQUE (session_id, set_number);
+  END IF;
+END$$;
+
+-- Reps: one rep_number per set
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'uq_reps_set_repnum'
+  ) THEN
+    ALTER TABLE reps ADD CONSTRAINT uq_reps_set_repnum UNIQUE (set_id, rep_number);
+  END IF;
+END$$;
+
+-- ============================================================
 -- Indexes for history/dashboard/analytics query patterns
 -- ============================================================
 

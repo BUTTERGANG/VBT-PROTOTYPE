@@ -56,6 +56,9 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-pill: 9999px;
+
+  /* Touch target minimum */
+  --touch-target-min: 44px;
 }
 
 /* Base */
@@ -69,6 +72,9 @@ html {
   color-scheme: dark;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent tap delay on mobile */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -104,7 +110,70 @@ body {
   outline-offset: 2px;
 }
 
-/* Typography helpers */
+/* ===========================
+   Responsive Container
+   Mobile: full width + padding
+   Tablet (640px+): 640px centered
+   Desktop (1024px+): 960px, sidebar layout
+   =========================== */
+
+.container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
+}
+
+@media (min-width: 640px) {
+  .container {
+    max-width: 600px;
+    padding-left: var(--space-6);
+    padding-right: var(--space-6);
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    max-width: 960px;
+    padding-left: var(--space-8);
+    padding-right: var(--space-8);
+  }
+}
+
+/* ===========================
+   Screen Container (per-screen wrapper)
+   =========================== */
+.screen-container {
+  width: 100%;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-bottom: 80px; /* space for bottom tab bar */
+  padding-top: var(--space-2);
+}
+
+@media (min-width: 640px) {
+  .screen-container {
+    max-width: 600px;
+    padding-bottom: 100px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .screen-container {
+    max-width: 100%;
+    padding-bottom: var(--space-6);
+    padding-top: var(--space-4);
+    padding-left: var(--space-6);
+    padding-right: var(--space-6);
+  }
+}
+
+/* ===========================
+   Typography helpers
+   Fluid on mobile, comfortable on desktop
+   =========================== */
 .text-display {
   font-size: clamp(36px, 8vw, 72px);
   font-weight: 400;
@@ -119,19 +188,25 @@ body {
 }
 
 .text-subheading {
-  font-size: 18px;
+  font-size: clamp(16px, 2.5vw, 18px);
   font-weight: 400;
   line-height: 1.56;
 }
 
 .text-body {
-  font-size: 16px;
+  font-size: clamp(14px, 2vw, 16px);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.text-body-sm {
+  font-size: clamp(13px, 1.8vw, 14px);
   font-weight: 400;
   line-height: 1.5;
 }
 
 .text-caption {
-  font-size: 14px;
+  font-size: clamp(12px, 1.6vw, 14px);
   font-weight: 400;
   line-height: 1.43;
 }
@@ -147,16 +222,20 @@ body {
 
 .text-mono-sm {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: clamp(12px, 1.8vw, 14px);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
-/* Component: Button */
+/* ===========================
+   Component: Button
+   Touch-friendly on mobile, compact on desktop
+   =========================== */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-2);
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;
@@ -165,6 +244,9 @@ body {
   cursor: pointer;
   transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
   text-decoration: none;
+  /* Touch target minimum */
+  min-height: var(--touch-target-min);
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn:disabled {
@@ -175,6 +257,13 @@ body {
 .btn-pill {
   border-radius: var(--radius-pill);
   padding: var(--space-2) var(--space-8);
+}
+
+@media (min-width: 640px) {
+  .btn-pill {
+    padding: var(--space-2) var(--space-6);
+    min-height: 36px;
+  }
 }
 
 .btn-primary {
@@ -204,6 +293,7 @@ body {
   color: var(--color-text-primary);
   padding: var(--space-2);
   border-radius: var(--radius-sm);
+  min-height: 36px;
 }
 
 .btn-ghost:hover:not(:disabled) {
@@ -231,7 +321,9 @@ body {
   background-color: rgba(239, 68, 68, 0.2);
 }
 
-/* Component: Card */
+/* ===========================
+   Component: Card
+   =========================== */
 .card {
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -239,7 +331,21 @@ body {
   padding: var(--space-6);
 }
 
-/* Component: Table */
+@media (min-width: 640px) {
+  .card {
+    padding: var(--space-8);
+  }
+}
+
+@media (min-width: 1024px) {
+  .card {
+    padding: var(--space-6);
+  }
+}
+
+/* ===========================
+   Component: Table
+   =========================== */
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -264,7 +370,9 @@ body {
   border-bottom: none;
 }
 
-/* Component: Zone Badge */
+/* ===========================
+   Component: Zone Badge
+   =========================== */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -275,31 +383,18 @@ body {
   font-weight: 500;
 }
 
-/* Safe area for mobile */
+/* ===========================
+   Safe area for mobile notches
+   =========================== */
 @supports (padding: env(safe-area-inset-bottom)) {
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
-/* Transition helpers */
+/* ===========================
+   Transition helpers
+   =========================== */
 .transition-color {
   transition: background-color 0.2s ease, border-color 0.2s ease;
-}
-
-/* Responsive container */
-.container {
-  width: 100%;
-  max-width: 600px;
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: var(--space-4);
-  padding-right: var(--space-4);
-}
-
-@media (min-width: 600px) {
-  .container {
-    padding-left: var(--space-6);
-    padding-right: var(--space-6);
-  }
 }

@@ -4,6 +4,54 @@ import { Router, Request, Response } from 'express';
 import sql from '../db/pool';
 import { v4 as uuidv4 } from 'uuid';
 
+// --- Simple in-memory rate limiter ---
+// Allows N requests per windowMs per IP. No external dependency.
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX = 30;           // 30 requests/minute per IP
+
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function rateLimit(req: Request, res: Response): boolean {
+  const key = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+
+  if (!bucket || now > bucket.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+
+  if (bucket.count >= RATE_LIMIT_MAX) {
+    res.status(429).json({ error: 'Too many requests. Try again in 60s.' });
+    return false;
+  }
+
+  bucket.count++;
+  return true;
+}
+
+// Auto-cleanup old buckets every 5 minutes to prevent memory leak
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of rateBuckets) {
+    if (now > bucket.resetAt) rateBuckets.delete(key);
+  }
+}, 300_000).unref();
+
+// --- Request timeout wrapper ---
+// Neon serverless can cold-start; this prevents hung requests.
+const REQUEST_TIMEOUT_MS = parseInt(process.env.REQUEST_TIMEOUT_MS || '30000');
+
+function withTimeout<T>(promise: Promise<T>, ms: number = REQUEST_TIMEOUT_MS): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Request timed out')), ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
 export const router = Router();
 
 // POST /api/sync/batch
@@ -11,6 +59,9 @@ export const router = Router();
 // Note: Neon serverless doesn't support multi-statement transactions.
 // We execute queries sequentially and track counts for best-effort sync.
 router.post('/batch', async (req: Request, res: Response) => {
+  // Rate limit check
+  if (!rateLimit(req, res)) return;
+
   try {
     const { sessions, readings } = req.body;
     let sessionsSynced = 0;
@@ -19,7 +70,7 @@ router.post('/batch', async (req: Request, res: Response) => {
     // Upsert sessions
     for (const session of sessions || []) {
       try {
-        await sql`
+        await withTimeout(sql`
           INSERT INTO sessions (id, athlete_id, exercise, start_time, end_time)
           VALUES (
             ${session.id},
@@ -29,7 +80,7 @@ router.post('/batch', async (req: Request, res: Response) => {
             ${session.endTime ? new Date(session.endTime).toISOString() : null}
           )
           ON CONFLICT (id) DO UPDATE SET end_time = EXCLUDED.end_time
-        `;
+        `);
         sessionsSynced++;
       } catch (err) {
         console.error(`Failed to sync session ${session.id}:`, err);
@@ -50,12 +101,12 @@ router.post('/batch', async (req: Request, res: Response) => {
       const first = repReadings[0];
 
       try {
-        // Find or create set
+        // Find or create set (uses UNIQUE constraint on session_id + set_number)
         let setId: string;
         const setResult = await sql`
           INSERT INTO sets (id, session_id, set_number, exercise)
           VALUES (${uuidv4()}, ${first.sessionId}, ${first.setNumber}, ${first.exercise || 'Squat'})
-          ON CONFLICT DO NOTHING
+          ON CONFLICT (session_id, set_number) DO NOTHING
           RETURNING id
         `;
 
@@ -68,12 +119,12 @@ router.post('/batch', async (req: Request, res: Response) => {
           setId = existing[0].id;
         }
 
-        // Find or create rep
+        // Find or create rep (uses UNIQUE constraint on set_id + rep_number)
         let repId: string;
         const repResult = await sql`
           INSERT INTO reps (id, set_id, rep_number, mean_velocity, peak_velocity, zone_result)
           VALUES (${uuidv4()}, ${setId}, ${first.repNumber}, 0, 0, 'IN_RANGE')
-          ON CONFLICT DO NOTHING
+          ON CONFLICT (set_id, rep_number) DO NOTHING
           RETURNING id
         `;
 
