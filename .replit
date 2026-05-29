@@ -1,0 +1,19 @@
+# Replit configuration
+# Docs: https://docs.replit.com/programming-ide/configuring-repl
+
+language = "nodejs"
+
+# Development: run backend with hot reload
+run = "cd backend && npm run dev"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+# Production: build PWA + backend, then start
+build = ["sh", "-c", "cd backend && npm install && npm run build && cd ../pwa && npm install && npm run build"]
+run = ["sh", "-c", "cd backend && NODE_ENV=production npm run start"]
+
+[[ports]]
+localPort = 3001
+externalPort = 80

@@ -1,0 +1,29 @@
+{
+  "name": "vbt-tracker-backend",
+  "version": "0.1.0",
+  "description": "VBT Tracker REST API",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:init": "node -e \"const {neon} = require('@neondatabase/serverless'); const fs = require('fs'); const sql = neon(process.env.DATABASE_URL); sql(fs.readFileSync('src/db/schema.sql','utf8')).then(()=>console.log('DB initialized')).catch(e=>{console.error(e);process.exit(1)})\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/uuid": "^11.0.0",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3"
+  }
+}
