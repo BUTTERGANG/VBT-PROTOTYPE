@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LiveLiftScreen } from './components/LiveLiftScreen';
+const CameraLiveLiftScreen = lazy(() => import('./components/CameraLiveLiftScreen'));
 import { PostSetSummaryScreen } from './components/PostSetSummaryScreen';
 import { SessionHistoryScreen } from './components/SessionHistoryScreen';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
@@ -9,10 +10,11 @@ import { AthleteProfilesScreen } from './components/AthleteProfilesScreen';
 import { CoachModeScreen } from './components/CoachModeScreen';
 import { usePWAInstall } from './hooks/usePWAInstall';
 
-type Screen = 'live' | 'summary' | 'history' | 'analytics' | 'athletes' | 'coach';
+type Screen = 'live' | 'camera' | 'summary' | 'history' | 'analytics' | 'athletes' | 'coach';
 
 const TABS: { id: Screen; label: string; icon: string }[] = [
   { id: 'live', label: 'LIFT', icon: 'bolt' },
+  { id: 'camera', label: 'CAMERA', icon: 'camera' },
   { id: 'history', label: 'HISTORY', icon: 'list' },
   { id: 'analytics', label: 'STATS', icon: 'chart' },
   { id: 'coach', label: 'COACH', icon: 'users' },
@@ -51,6 +53,12 @@ function TabIcon({ type, active }: { type: string; active: boolean }) {
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
       </svg>
     ),
+    camera: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+        <circle cx="12" cy="13" r="4" />
+      </svg>
+    ),
   };
   return icons[type] || icons.bolt;
 }
@@ -70,6 +78,32 @@ function useMediaQuery(minWidth: number): boolean {
   }, [minWidth]);
 
   return matches;
+}
+
+function CameraLoadingSkeleton() {
+  return (
+    <div
+      className="flex flex-col items-center justify-center"
+      style={{
+        minHeight: 'calc(100vh - 120px)',
+        padding: 'var(--space-4)',
+        paddingBottom: '80px',
+      }}
+    >
+      <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)', maxWidth: '500px' }}>
+        <div style={{ fontSize: '32px', marginBottom: 'var(--space-3)' }}>📷</div>
+        <div className="text-body" style={{ color: 'var(--color-text-primary)', marginBottom: 'var(--space-2)' }}>
+          Loading Camera Mode
+        </div>
+        <div className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
+          Loading ML models & camera pipeline...
+        </div>
+        <div style={{ marginTop: 'var(--space-4)', width: '200px', height: '4px', backgroundColor: 'var(--color-border)', borderRadius: '2px', overflow: 'hidden' }}>
+          <div style={{ width: '40%', height: '100%', backgroundColor: 'var(--color-brand)', borderRadius: '2px', animation: 'pulse 1.5s ease-in-out infinite' }} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function AppContent() {
@@ -175,6 +209,11 @@ function AppContent() {
         {/* Screen content */}
         <div style={{ flex: 1, maxWidth: isDesktop ? '960px' : '100%', width: '100%', margin: '0 auto' }}>
           {screen === 'live' && <LiveLiftScreen />}
+          {screen === 'camera' && (
+            <Suspense fallback={<CameraLoadingSkeleton />}>
+              <CameraLiveLiftScreen />
+            </Suspense>
+          )}
           {screen === 'summary' && <PostSetSummaryScreen />}
           {screen === 'history' && <SessionHistoryScreen />}
           {screen === 'analytics' && <AnalyticsDashboard />}

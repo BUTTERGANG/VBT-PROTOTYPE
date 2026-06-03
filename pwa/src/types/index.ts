@@ -13,6 +13,19 @@ export interface VelocityReading {
   source?: string;
 }
 
+export interface VisionSettings {
+  /** Plate diameter in mm for scale calibration */
+  plateDiameterMm: number;
+  /** Whether the user has completed camera calibration */
+  isCalibrated: boolean;
+  /** Pixels per mm at the barbell depth plane */
+  pixelsPerMm: number;
+  /** Selected exercise category for camera mode */
+  exerciseCategory: string;
+  /** Whether video recording is enabled for the set */
+  recordingEnabled: boolean;
+}
+
 export interface Rep {
   id?: string;
   repNumber: number;

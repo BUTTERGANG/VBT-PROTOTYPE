@@ -1,10 +1,12 @@
 // src/store/liftStore.ts
 
 import { create } from 'zustand';
-import type { VelocityReading, Rep, ZoneResult, ZoneConfig, BLEState, BLEDataPacket, Session, Athlete, Program } from '../types';
+import type { VelocityReading, Rep, ZoneResult, ZoneConfig, BLEState, BLEDataPacket, Session, Athlete, Program, VisionSettings } from '../types';
 import { calculateZone } from '../utils/zoneCalculator';
 import { bleManager } from '../services/ble/BLEManager';
 import { localCache } from '../services/storage/LocalCache';
+
+export type CaptureSource = 'ble' | 'camera' | null;
 
 interface LiftState {
   // Session state
@@ -16,10 +18,16 @@ interface LiftState {
   zoneConfig: ZoneConfig;
   currentZone: ZoneResult;
 
+  // Capture source
+  captureSource: CaptureSource;
+
   // BLE observer state
   bleState: BLEState;
   // Coach mode: multiple athletes streaming live data
   liveAthletes: Record<string, BLEDataPacket>;
+
+  // Vision state
+  visionSettings: VisionSettings;
 
   // Data
   athletes: Athlete[];
@@ -33,9 +41,13 @@ interface LiftState {
   stopRep: () => void;
   setZoneConfig: (config: ZoneConfig) => void;
   setExercise: (exercise: string) => void;
+  setCaptureSource: (source: CaptureSource) => void;
 
   // BLE observer
   handleBLEData: (packet: BLEDataPacket) => void;
+
+  // Vision actions
+  updateVisionSettings: (settings: Partial<VisionSettings>) => void;
 
   // Data actions
   setAthletes: (athletes: Athlete[]) => void;
@@ -51,8 +63,16 @@ export const useLiftStore = create<LiftState>((set, get) => ({
   currentVelocity: 0,
   zoneConfig: { targetVelocity: 0.80, tolerance: 0.05 },
   currentZone: 'SLOW',
+  captureSource: null,
   bleState: bleManager.getState(),
   liveAthletes: {},
+  visionSettings: {
+    plateDiameterMm: 450,
+    isCalibrated: false,
+    pixelsPerMm: 0,
+    exerciseCategory: 'squat',
+    recordingEnabled: true,
+  },
   athletes: [],
   programs: [],
   recentSessions: [],
@@ -95,8 +115,6 @@ export const useLiftStore = create<LiftState>((set, get) => ({
   },
 
   stopRep: () => {
-    // Simplified: just track that a rep was completed
-    // Full rep processing happens on-device
     const { completedReps } = get();
     set({ completedReps: [...completedReps, {
       repNumber: completedReps.length + 1,
@@ -115,12 +133,22 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     set({ exercise });
   },
 
+  setCaptureSource: (source: CaptureSource) => {
+    set({ captureSource: source });
+  },
+
   handleBLEData: (packet: BLEDataPacket) => {
     set((state) => ({
       liveAthletes: {
         ...state.liveAthletes,
         [packet.athleteId]: packet,
       },
+    }));
+  },
+
+  updateVisionSettings: (settings: Partial<VisionSettings>) => {
+    set((state) => ({
+      visionSettings: { ...state.visionSettings, ...settings },
     }));
   },
 
