@@ -80,6 +80,7 @@ vbt-tracker/
 ├── firmware/                # nRF52840 firmware reference
 │   └── REFERENCE.md
 ├── docs/                    # Project documentation
+│   └── scrum-board.md
 ├── .replit                  # Replit deployment config
 ├── replit.nix               # Replit Nix environment
 └── README.md
@@ -199,6 +200,10 @@ Production build splits into:
 - `main.js` — 381 KB (app shell, routing, screens)
 - `camera.js` — 38 KB (CameraLiveLiftScreen chunk)
 - `vision.js` — 1.2 MB (TensorFlow.js + MediaPipe)
+
+## Scrum Board
+
+See `docs/scrum-board.md` for the full task breakdown, sprint status, and backlog.
 
 ## Reference Repos
 
