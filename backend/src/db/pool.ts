@@ -27,16 +27,14 @@ const databaseUrl = rawUrl
 // - Supports transactions via sql.begin()
 const neonSql = databaseUrl ? neon(databaseUrl) : null;
 
-// Proxy that throws only when a query is actually executed
-const sql = new Proxy({} as ReturnType<typeof neon>, {
-  apply(_target, _thisArg, args) {
-    if (!neonSql) throw new Error('DATABASE_URL not configured');
-    return neonSql(...args);
-  },
-  get(_target, prop) {
-    if (!neonSql) return undefined;
-    return (neonSql as any)[prop];
-  }
-}) as ReturnType<typeof neon>;
+// Wrapper: defers "no DATABASE_URL" error to query time so the server
+// can start (health check, static file serving) without a database.
+function sql(strings: TemplateStringsArray, ...values: any[]) {
+  if (!neonSql) throw new Error('DATABASE_URL not configured');
+  return neonSql(strings, ...values);
+}
+
+// Forward .transaction() and other Neon methods when available
+sql.transaction = neonSql ? neonSql.transaction.bind(neonSql) : undefined as any;
 
 export default sql;
