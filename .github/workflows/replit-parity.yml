@@ -1,0 +1,136 @@
+# Replit Parity CI — validates that code will work on Replit before it gets merged
+#
+# This runs the EXACT same build sequence as .replit [deployment]:
+#   1. cd backend && npm install && npm run build
+#   2. cd pwa && npm install && npm run build
+#   3. Start backend with NODE_ENV=production
+#   4. Verify PWA serves and assets are valid
+#
+# If this passes, Replit will serve your app correctly.
+# If it fails, fix it before merging — don't discover it in Replit's Webview.
+
+name: Replit Parity
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+
+    # Match Replit's Nix stable-24_05 / nodejs_20
+    env:
+      NODE_ENV: production
+      PORT: 3001
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20 (matches Replit)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            pwa/package-lock.json
+
+      # --- Backend build (mirrors .replit [deployment] build step 1) ---
+      - name: Backend — install
+        working-directory: backend
+        run: npm install
+
+      - name: Backend — typecheck
+        working-directory: backend
+        run: npx tsc --noEmit
+
+      - name: Backend — build
+        working-directory: backend
+        run: npm run build
+
+      # --- PWA build (mirrors .replit [deployment] build step 2) ---
+      - name: PWA — install
+        working-directory: pwa
+        run: npm install
+
+      - name: PWA — typecheck
+        working-directory: pwa
+        run: npx tsc --noEmit
+
+      - name: PWA — build
+        working-directory: pwa
+        run: npm run build
+
+      # --- Validate the build output ---
+
+      - name: Check PWA assets exist
+        run: |
+          ASSETS=$(ls pwa/dist/assets/ 2>/dev/null | wc -l)
+          echo "Asset files: $ASSETS"
+          if [ "$ASSETS" -eq 0 ]; then
+            echo "::error::No assets in pwa/dist/assets/ — PWA build produced nothing"
+            exit 1
+          fi
+
+      - name: Check PWA index.html
+        run: |
+          if [ ! -f pwa/dist/index.html ]; then
+            echo "::error::pwa/dist/index.html missing — Vite build failed silently"
+            exit 1
+          fi
+          # Verify HTML references actual JS/CSS bundles (not broken paths)
+          if ! grep -q 'src=' pwa/dist/index.html; then
+            echo "::error::index.html has no JS script references — build is broken"
+            exit 1
+          fi
+
+      - name: Check backend dist exists
+        run: |
+          if [ ! -f backend/dist/index.js ]; then
+            echo "::error::backend/dist/index.js missing — backend build failed"
+            exit 1
+          fi
+
+      # --- Runtime test: start server, verify it serves ---
+
+      - name: Start backend + verify PWA serves
+        run: |
+          # Start the production server in background (no DATABASE_URL = API routes fail, but static serve works)
+          cd backend && NODE_ENV=production node dist/index.js &
+          SERVER_PID=$!
+
+          # Wait up to 10s for server
+          for i in $(seq 1 10); do
+            if curl -sf http://localhost:3001/api/health > /dev/null 2>&1; then
+              echo "Server is up"
+              break
+            fi
+            if [ "$i" -eq 10 ]; then
+              echo "::error::Server did not start within 10s"
+              kill $SERVER_PID 2>/dev/null
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Verify PWA index.html is served (catch-all route)
+          HTTP_CODE=$(curl -sf -o /dev/null -w '%{http_code}' http://localhost:3001/)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::PWA returned HTTP $HTTP_CODE (expected 200)"
+            kill $SERVER_PID 2>/dev/null
+            exit 1
+          fi
+          echo "PWA serves correctly (HTTP 200)"
+
+          # Verify API health route doesn't return the SPA fallback
+          HEALTH_BODY=$(curl -sf http://localhost:3001/api/health)
+          if echo "$HEALTH_BODY" | grep -q '"status":"ok"'; then
+            echo "API health check returns valid JSON"
+          else
+            echo "::warning::API health returned unexpected body (may need DATABASE_URL)"
+          fi
+
+          kill $SERVER_PID 2>/dev/null
