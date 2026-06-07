@@ -29,29 +29,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node 20 (matches Replit)
+      - name: Setup Node 22 (matches Replit replit.nix)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: |
             backend/package-lock.json
             pwa/package-lock.json
 
-      # --- Backend build (mirrors .replit [deployment] build step 1) ---
-      - name: Backend — install
-        working-directory: backend
-        run: npm install
-
-      - name: Backend — typecheck
-        working-directory: backend
-        run: npx tsc --noEmit
-
-      - name: Backend — build
-        working-directory: backend
-        run: npm run build
-
-      # --- PWA build (mirrors .replit [deployment] build step 2) ---
+      # --- PWA build (mirrors .replit [deployment] build step 1) ---
       - name: PWA — install
         working-directory: pwa
         run: npm install
@@ -62,6 +49,19 @@ jobs:
 
       - name: PWA — build
         working-directory: pwa
+        run: npm run build
+
+      # --- Backend build (mirrors .replit [deployment] build step 2) ---
+      - name: Backend — install
+        working-directory: backend
+        run: npm install
+
+      - name: Backend — typecheck
+        working-directory: backend
+        run: npx tsc --noEmit
+
+      - name: Backend — build
+        working-directory: backend
         run: npm run build
 
       # --- Validate the build output ---

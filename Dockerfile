@@ -1,7 +1,7 @@
-# Mirrors Replit's Nix stable-24_05 / nodejs_20 environment
+# Mirrors Replit's Nix stable-25_05 / nodejs_22 environment
 # Build + serve sequence matches .replit [deployment] exactly
 
-FROM node:20-bookworm AS builder
+FROM node:22-bookworm AS builder
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ COPY pwa/ ./
 RUN npm run build
 
 # --- Production image ---
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 WORKDIR /app
 
