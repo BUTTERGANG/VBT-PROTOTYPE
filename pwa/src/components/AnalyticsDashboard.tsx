@@ -19,6 +19,7 @@ const TREND_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#e
 export function AnalyticsDashboard({ athleteId }: AnalyticsDashboardProps) {
   const [data, setData] = useState<DashboardAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
   const [days, setDays] = useState(30);
 
   useEffect(() => {
@@ -36,8 +37,17 @@ const result: any = await api.getDashboard({ athlete_id: athleteId, days });
         fatigueAlerts: result.fatigue_alerts || [],
         programAdherence: result.program_adherence || [],
       });
+      setOffline(false);
     } catch (err) {
-      console.error('Failed to load dashboard:', err);
+      console.warn('Analytics API unavailable, showing empty state:', err);
+      setOffline(true);
+      // Provide empty data so the UI still renders
+      setData({
+        velocityTrend: [],
+        zoneDistribution: [],
+        fatigueAlerts: [],
+        programAdherence: [],
+      });
     } finally {
       setLoading(false);
     }
@@ -82,6 +92,22 @@ const result: any = await api.getDashboard({ athlete_id: athleteId, days });
 
   return (
     <div className="screen-container" style={{ paddingBottom: '80px' }}>
+      {/* Offline banner */}
+      {offline && (
+        <div style={{
+          padding: 'var(--space-2) var(--space-4)',
+          backgroundColor: 'rgba(245,158,11,0.1)',
+          borderBottom: '1px solid rgba(245,158,11,0.2)',
+          fontSize: '11px',
+          fontFamily: 'var(--font-mono)',
+          color: '#f59e0b',
+          textAlign: 'center',
+          marginBottom: 'var(--space-3)',
+        }}>
+          ⚡ Offline — connect to sync analytics
+        </div>
+      )}
+
       {/* Period selector */}
       <div className="flex gap-2" style={{ marginBottom: 'var(--space-4)', paddingTop: 'var(--space-2)' }}>
         {[7, 14, 30, 90].map((d) => (

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api/client';
+import { localCache } from '../services/storage/LocalCache';
 import type { Session } from '../types';
 
 interface SessionHistoryScreenProps {
@@ -18,6 +19,7 @@ const ZONE_COLORS: Record<string, string> = {
 export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHistoryScreenProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
   const [exerciseFilter, setExerciseFilter] = useState('');
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -37,12 +39,35 @@ export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHist
       setSessions(reset ? newSessions : [...sessions, ...newSessions]);
       setHasMore(newSessions.length === LIMIT);
       setOffset(newOffset + LIMIT);
+      setOffline(false);
     } catch (err) {
-      console.error('Failed to load sessions:', err);
+      console.warn('API unavailable, falling back to local cache:', err);
+      setOffline(true);
+      // Fall back to LocalCache
+      try {
+        const cached = await localCache.getSessionHistory(LIMIT);
+        const mapped = cached.map(s => ({
+          id: s.id,
+          athleteId: s.athleteId,
+          exercise: s.exercise,
+          startTime: new Date(s.startTime).toISOString(),
+          endTime: s.endTime ? new Date(s.endTime).toISOString() : undefined,
+          sets: [],
+          totalReps: 0,
+          avgVelocity: 0,
+        }));
+        const filtered = exerciseFilter
+          ? mapped.filter(s => s.exercise.toLowerCase().includes(exerciseFilter.toLowerCase()))
+          : mapped;
+        setSessions(reset ? filtered : [...sessions, ...filtered]);
+        setHasMore(false);
+      } catch (cacheErr) {
+        console.error('LocalCache also failed:', cacheErr);
+      }
     } finally {
       setLoading(false);
     }
-  }, [athleteId, exerciseFilter, offset]);
+  }, [athleteId, exerciseFilter, offset, sessions]);
 
   useEffect(() => {
     setSessions([]);
@@ -62,6 +87,21 @@ export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHist
 
   return (
     <div className="screen-container" style={{ paddingBottom: '80px' }}>
+      {/* Offline banner */}
+      {offline && (
+        <div style={{
+          padding: 'var(--space-2) var(--space-4)',
+          backgroundColor: 'rgba(245,158,11,0.1)',
+          borderBottom: '1px solid rgba(245,158,11,0.2)',
+          fontSize: '11px',
+          fontFamily: 'var(--font-mono)',
+          color: '#f59e0b',
+          textAlign: 'center',
+        }}>
+          ⚡ Offline — showing local data
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex gap-2" style={{ marginBottom: 'var(--space-4)', paddingTop: 'var(--space-2)' }}>
         <input
@@ -129,19 +169,14 @@ export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHist
 
               <div className="flex items-center gap-3" style={{ marginBottom: 'var(--space-3)' }}>
                 <span className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
-                  {formatDate(session.start_time)}
+                  {formatDate(session.startTime || session.start_time)}
                 </span>
                 <span className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
-                  {formatTime(session.start_time)}
+                  {formatTime(session.startTime || session.start_time)}
                 </span>
                 {session.athlete_name && (
                   <span className="text-caption" style={{ color: 'var(--color-brand)' }}>
                     {session.athlete_name}
-                  </span>
-                )}
-                {session.program_name && (
-                  <span className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
-                    📋 {session.program_name}
                   </span>
                 )}
               </div>
@@ -150,7 +185,7 @@ export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHist
               <div className="flex gap-4">
                 <div>
                   <span className="text-mono" style={{ color: 'var(--color-brand)', fontSize: '16px' }}>
-                    {session.total_reps || 0}
+                    {session.totalReps || session.total_reps || 0}
                   </span>
                   <span className="text-caption" style={{ color: 'var(--color-text-muted)', marginLeft: '4px' }}>
                     reps
@@ -158,22 +193,12 @@ export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHist
                 </div>
                 <div>
                   <span className="text-mono" style={{ color: 'var(--color-text-primary)', fontSize: '16px' }}>
-                    {(session.avg_velocity || 0).toFixed(2)}
+                    {(session.avgVelocity || session.avg_velocity || 0).toFixed(2)}
                   </span>
                   <span className="text-caption" style={{ color: 'var(--color-text-muted)', marginLeft: '4px' }}>
                     m/s avg
                   </span>
                 </div>
-                {session.autoreg_score != null && (
-                  <div>
-                    <span className="text-mono" style={{ color: 'var(--color-text-primary)', fontSize: '16px' }}>
-                      {(session.autoreg_score * 100).toFixed(0)}%
-                    </span>
-                    <span className="text-caption" style={{ color: 'var(--color-text-muted)', marginLeft: '4px' }}>
-                      score
-                    </span>
-                  </div>
-                )}
               </div>
 
               {/* Zone mini-bar */}

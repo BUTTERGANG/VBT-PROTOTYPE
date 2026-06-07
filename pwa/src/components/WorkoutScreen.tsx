@@ -23,11 +23,12 @@ interface WorkoutScreenProps {
   initialSets: WorkoutSet[];
   onFinish: (sets: WorkoutSet[]) => void;
   onAddSet: () => void; // Navigate back to camera to record another set
+  onUploadSet?: () => void; // Navigate to camera upload mode
 }
 
 const QUICK_WEIGHTS = [2.5, 5, 10, 20];
 
-export function WorkoutScreen({ initialSets, onFinish, onAddSet }: WorkoutScreenProps) {
+export function WorkoutScreen({ initialSets, onFinish, onAddSet, onUploadSet }: WorkoutScreenProps) {
   const [sets, setSets] = useState<WorkoutSet[]>(initialSets);
   const [showProfile, setShowProfile] = useState(false);
 
@@ -179,9 +180,7 @@ export function WorkoutScreen({ initialSets, onFinish, onAddSet }: WorkoutScreen
             + Record Set
           </button>
           <button
-            onClick={() => {
-              // TODO: Navigate to upload flow
-            }}
+            onClick={() => onUploadSet?.()}
             className="btn btn-pill"
             style={{ flex: 1, padding: 'var(--space-3)' }}
           >

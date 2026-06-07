@@ -392,9 +392,77 @@ body {
   }
 }
 
-/* ===========================
+/* ============================
    Transition helpers
-   =========================== */
+   ============================ */
 .transition-color {
   transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* ============================
+   Screen transitions (react-router)
+   ============================ */
+.screen-transition {
+  position: relative;
+  overflow: hidden;
+}
+
+.screen-transition > * {
+  animation: screenFadeIn 0.2s ease-out;
+}
+
+@keyframes screenFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================
+   Pulse animation (loading bar)
+   ============================ */
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.pulse-bar-fill {
+  width: 40%;
+  height: 100%;
+  background-color: var(--color-brand);
+  border-radius: 2px;
+  animation: pulseSlide 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseSlide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(150%); }
+  100% { transform: translateX(-100%); }
+}
+
+/* ============================
+   Spinner (BLE loading)
+   ============================ */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-brand);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* ============================
+   iOS momentum scrolling
+   ============================ */
+.screen-container {
+  -webkit-overflow-scrolling: touch;
 }

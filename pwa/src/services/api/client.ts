@@ -49,4 +49,16 @@ export const api = {
 
   // Sync
   syncBatch: (data: any) => request<any>('/sync/batch', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Autoregulation
+  autoregulate: (data: {
+    athlete_id: string;
+    athlete_profile?: { baseline_velocity?: number; fatigue_threshold?: number; bodyweight?: number };
+    session_data: {
+      exercise: string;
+      sets: Array<{ set_number: number; reps: Array<{ mean_velocity: number; peak_velocity: number; zone_result: string }>; target_velocity?: number; target_tolerance?: number }>;
+      target_velocity?: number;
+      target_tolerance?: number;
+    };
+  }) => request<any>('/autoregulate', { method: 'POST', body: JSON.stringify(data) }),
 };

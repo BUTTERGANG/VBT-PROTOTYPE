@@ -19,11 +19,28 @@ const PRESETS: { label: string; config: ZoneConfig }[] = [
 export function ZoneConfigPanel({ zoneConfig, onSave, onClose }: ZoneConfigPanelProps) {
   const [target, setTarget] = useState(zoneConfig.targetVelocity.toString());
   const [tolerance, setTolerance] = useState(zoneConfig.tolerance.toString());
+  const [error, setError] = useState<string | null>(null);
 
   const handleSave = () => {
     const t = parseFloat(target);
     const tol = parseFloat(tolerance);
-    if (isNaN(t) || isNaN(tol) || t <= 0 || tol <= 0) return;
+    if (isNaN(t) || t <= 0) {
+      setError('Target velocity must be a positive number');
+      return;
+    }
+    if (isNaN(tol) || tol <= 0) {
+      setError('Tolerance must be a positive number');
+      return;
+    }
+    if (t > 3.0) {
+      setError('Target velocity seems too high (max 3.0 m/s)');
+      return;
+    }
+    if (tol > t) {
+      setError('Tolerance cannot be larger than target velocity');
+      return;
+    }
+    setError(null);
     onSave({ targetVelocity: t, tolerance: tol });
     onClose();
   };
@@ -31,7 +48,11 @@ export function ZoneConfigPanel({ zoneConfig, onSave, onClose }: ZoneConfigPanel
   const handlePreset = (config: ZoneConfig) => {
     setTarget(config.targetVelocity.toString());
     setTolerance(config.tolerance.toString());
+    setError(null);
   };
+
+  const previewTarget = parseFloat(target) || 0;
+  const previewTol = parseFloat(tolerance) || 0;
 
   return (
     <div
@@ -127,6 +148,13 @@ export function ZoneConfigPanel({ zoneConfig, onSave, onClose }: ZoneConfigPanel
           </div>
         </div>
 
+        {/* Validation error */}
+        {error && (
+          <div style={{ marginBottom: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid #ef4444', fontSize: '12px', color: '#ef4444' }}>
+            {error}
+          </div>
+        )}
+
         {/* Preview */}
         <div
           className="flex items-center justify-between"
@@ -140,7 +168,7 @@ export function ZoneConfigPanel({ zoneConfig, onSave, onClose }: ZoneConfigPanel
         >
           <span className="text-caption" style={{ color: 'var(--color-text-muted)' }}>Zone range:</span>
           <span className="text-mono-sm" style={{ color: 'var(--color-brand)' }}>
-            {((parseFloat(target) || 0) - (parseFloat(tolerance) || 0)).toFixed(2)} — {((parseFloat(target) || 0) + (parseFloat(tolerance) || 0)).toFixed(2)} m/s
+            {previewTarget > 0 ? `${(previewTarget - previewTol).toFixed(2)} — ${(previewTarget + previewTol).toFixed(2)}` : '—'} m/s
           </span>
         </div>
 

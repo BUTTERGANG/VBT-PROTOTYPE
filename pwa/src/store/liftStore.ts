@@ -93,10 +93,38 @@ export const useLiftStore = create<LiftState>((set, get) => ({
   },
 
   endSession: async () => {
-    const { sessionId } = get();
+    const { sessionId, completedReps, exercise } = get();
     if (sessionId) {
       await localCache.endSession(sessionId);
     }
+
+    // Try syncing to backend in the background
+    if (sessionId && completedReps.length > 0) {
+      try {
+        const { api } = await import('../services/api/client');
+        await api.syncBatch({
+          sessions: [{
+            id: sessionId,
+            athlete_id: 'default',
+            exercise,
+            start_time: new Date().toISOString(),
+            sets: [{
+              set_number: 1,
+              reps: completedReps.map(r => ({
+                rep_number: r.repNumber,
+                mean_velocity: r.meanVelocity,
+                peak_velocity: r.peakVelocity,
+                zone_result: r.zoneResult,
+              })),
+            }],
+          }],
+        });
+        await localCache.markSessionSynced(sessionId);
+      } catch (err) {
+        console.warn('Background sync failed, data saved locally:', err);
+      }
+    }
+
     set({
       sessionId: null,
       isActive: false,

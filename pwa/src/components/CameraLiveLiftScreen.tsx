@@ -11,6 +11,8 @@ import { acceptVideoFile, SetRecorder } from '../services/recording/SetRecorder'
 import type { VelocityReading, ZoneResult } from '../types';
 import { getZoneColor } from '../utils/zoneCalculator';
 import { calculateZone } from '../utils/zoneCalculator';
+import { isIOS, supportsMediaRecorder, getRecommendedFps } from '../utils/iosDetection';
+import { CameraFramingGuide } from './CameraFramingGuide';
 
 type CameraPhase = 'setup' | 'calibrating' | 'tracking' | 'processing' | 'error';
 type InputMode = 'camera-live' | 'camera-record' | 'upload';
@@ -18,7 +20,7 @@ type InputMode = 'camera-live' | 'camera-record' | 'upload';
 // Weight quick-add options in kg
 const QUICK_WEIGHTS = [2.5, 5, 10, 20];
 
-export default function CameraLiveLiftScreen() {
+export default function CameraLiveLiftScreen({ initialInputMode }: { initialInputMode?: 'camera-live' | 'camera-record' | 'upload' }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const visionRef = useRef<VisionManager | null>(null);
@@ -34,9 +36,39 @@ export default function CameraLiveLiftScreen() {
   const [manualPlateWidth, setManualPlateWidth] = useState<string>(String(visionSettings.plateDiameterMm));
   const [repCount, setRepCount] = useState(0);
   const [exerciseCategory, setExerciseCategory] = useState<ExerciseCategory>(visionSettings.exerciseCategory as ExerciseCategory || 'squat');
-  const [inputMode, setInputMode] = useState<InputMode>('camera-record');
+  const [inputMode, setInputMode] = useState<InputMode>(initialInputMode || 'camera-record');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showFramingGuide, setShowFramingGuide] = useState(false);
+
+  // iOS-specific state
+  const isIOSDevice = isIOS();
+  const canRecord = supportsMediaRecorder();
+  const [iosWarning, setIosWarning] = useState<string | null>(null);
+
+  // Show iOS warnings on mount
+  useEffect(() => {
+    const warnings: string[] = [];
+    if (isIOSDevice) {
+      warnings.push('iOS Safari: camera may be slower. Use upload mode if live tracking lags.');
+      if (!canRecord) {
+        warnings.push('Video recording not supported on this iOS version. Use live or upload mode.');
+      }
+    }
+    setIosWarning(warnings.length > 0 ? warnings.join(' ') : null);
+  }, [isIOSDevice, canRecord]);
+
+  // Pause/resume camera when app goes to background (iOS kills camera on lock)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden && visionRef.current) {
+        // Could pause tracking here; for now just note it
+        console.log('App backgrounded — camera may stop on iOS');
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
   const [liftingMode, setLiftingMode] = useState<LiftingMode>(2);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [lossCueEnabled, setLossCueEnabled] = useState(true);
@@ -70,6 +102,7 @@ export default function CameraLiveLiftScreen() {
         ...DEFAULT_VISION_CONFIG,
         plateDiameterMm: visionSettings.plateDiameterMm,
         movementThreshold: exerciseConfig.minRepDisplacement / 20,
+        targetFps: getRecommendedFps(),
       });
       visionRef.current = vm;
 
@@ -325,7 +358,28 @@ export default function CameraLiveLiftScreen() {
               Vision-based barbell tracking
             </div>
           </div>
+          <button
+            onClick={() => setShowFramingGuide(true)}
+            style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '4px 8px', color: 'var(--color-text-muted)', fontSize: '11px', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+          >
+            ? Framing
+          </button>
         </div>
+
+        {/* iOS warning */}
+        {iosWarning && (
+          <div style={{ width: '100%', maxWidth: '500px', marginBottom: 'var(--space-3)', padding: 'var(--space-3)', backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid #f59e0b', fontSize: '12px', color: '#f59e0b' }}>
+            ⚠ {iosWarning}
+          </div>
+        )}
+
+        {/* Camera Framing Guide Overlay */}
+        {showFramingGuide && (
+          <CameraFramingGuide
+            exerciseCategory={exerciseCategory}
+            onDismiss={() => setShowFramingGuide(false)}
+          />
+        )}
 
         {/* 1. Exercise selector */}
         <div className="card" style={{ width: '100%', maxWidth: '500px', marginBottom: 'var(--space-4)' }}>
@@ -512,13 +566,33 @@ export default function CameraLiveLiftScreen() {
           {/* Start button */}
           {inputMode === 'upload' ? (
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!uploadFile) {
                   setUploadError('Please select a video file first');
                   return;
                 }
-                // TODO: Wire VideoProcessor for upload mode
-                setUploadError('Upload processing coming soon!');
+                setUploadError(null);
+                setPhase('processing');
+                try {
+                  const { VideoProcessor } = await import('../services/recording/VideoProcessor');
+                  const proc = new VideoProcessor();
+                  const result = await proc.process(
+                    uploadFile,
+                    visionSettings.plateDiameterMm,
+                    (_progress) => { /* could show progress bar */ },
+                    (reading) => { addReading(reading); },
+                  );
+                  if (result.readings.length > 0) {
+                    updateVisionSettings({ isCalibrated: result.calibrated });
+                    setRepCount(result.repCount);
+                  } else {
+                    setUploadError('No barbell detected in video. Try a clip with the bar clearly visible.');
+                  }
+                  setPhase('setup');
+                } catch (err: any) {
+                  setUploadError(err.message || 'Failed to process video');
+                  setPhase('setup');
+                }
               }}
               disabled={!uploadFile}
               className="btn btn-pill btn-brand"
