@@ -16,8 +16,8 @@ ERRORS=0
 echo -e "${YELLOW}▶ Pre-push: checking Replit parity...${NC}"
 
 # --- Backend typecheck ---
-echo -e "${YELLOW}  backend: tsc --noEmit${NC}"
-if (cd backend && npx tsc --noEmit 2>&1); then
+echo -e "${YELLOW}  backend: tsc -b --noEmit${NC}"
+if (cd backend && npx tsc -b --noEmit 2>&1); then
   echo -e "${GREEN}  ✓ backend typecheck${NC}"
 else
   echo -e "${RED}  ✗ backend typecheck failed${NC}"
@@ -25,8 +25,8 @@ else
 fi
 
 # --- PWA typecheck ---
-echo -e "${YELLOW}  pwa: tsc --noEmit${NC}"
-if (cd pwa && npx tsc --noEmit 2>&1); then
+echo -e "${YELLOW}  pwa: tsc -b --noEmit${NC}"
+if (cd pwa && npx tsc -b --noEmit 2>&1); then
   echo -e "${GREEN}  ✓ pwa typecheck${NC}"
 else
   echo -e "${RED}  ✗ pwa typecheck failed${NC}"

@@ -45,7 +45,7 @@ jobs:
 
       - name: PWA — typecheck
         working-directory: pwa
-        run: npx tsc --noEmit
+        run: npx tsc -b --noEmit
 
       - name: PWA — build
         working-directory: pwa
@@ -58,7 +58,7 @@ jobs:
 
       - name: Backend — typecheck
         working-directory: backend
-        run: npx tsc --noEmit
+        run: npx tsc -b --noEmit
 
       - name: Backend — build
         working-directory: backend
