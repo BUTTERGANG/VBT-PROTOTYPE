@@ -23,7 +23,6 @@ jobs:
 
     # Match Replit's Nix stable-25_05 / nodejs_22
     env:
-      NODE_ENV: production
       PORT: 3001
 
     steps:
