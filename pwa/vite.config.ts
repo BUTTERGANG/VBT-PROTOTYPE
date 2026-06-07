@@ -5,6 +5,17 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   base: './',  // relative paths so PWA works on any Replit URL
+  server: {
+    host: '0.0.0.0',      // bind to all interfaces so Replit webview can reach it
+    port: 5173,
+    allowedHosts: true,   // accept *.replit.dev and *.repl.co hostnames
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),

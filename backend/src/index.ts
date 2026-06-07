@@ -49,7 +49,7 @@ if (process.env.NODE_ENV === 'production') {
   const pwaDist = path.join(__dirname, '../../pwa/dist');
   app.use(express.static(pwaDist));
   // Catch-all: serve index.html for SPA routing (must be after API routes)
-  app.get('*', (req, res) => {
+  app.get('/{*splat}', (req, res) => {
     res.sendFile(path.join(pwaDist, 'index.html'));
   });
 }
