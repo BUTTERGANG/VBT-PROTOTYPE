@@ -1,20 +1,23 @@
 // src/components/CameraLiveLiftScreen.tsx
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLiftStore } from '../store/liftStore';
 import { VisionManager, DEFAULT_VISION_CONFIG } from '../services/vision';
-import type { VisionState, VisionError, BarPosition } from '../services/vision';
+import type { VisionError, BarPosition } from '../services/vision';
 import { feedbackEngine } from '../services/audio/FeedbackEngine';
 import { getExerciseConfig, getExerciseList, type ExerciseCategory } from '../services/vision/exerciseConfigs';
 import { getLiftingModeConfig, type LiftingMode } from '../services/vision/liftingModes';
 import { acceptVideoFile, SetRecorder } from '../services/recording/SetRecorder';
-import type { VelocityReading, ZoneResult } from '../types';
+import type { VelocityReading, ZoneResult, Rep } from '../types';
 import { getZoneColor } from '../utils/zoneCalculator';
 import { calculateZone } from '../utils/zoneCalculator';
 import { isIOS, supportsMediaRecorder, getRecommendedFps } from '../utils/iosDetection';
 import { CameraFramingGuide } from './CameraFramingGuide';
+import type { SetReviewData } from './SetReviewScreen';
 
-type CameraPhase = 'setup' | 'calibrating' | 'tracking' | 'processing' | 'error';
+type CameraPhase = 'setup' | 'tracking' | 'processing' | 'error';
+type PlateStatus = 'searching' | 'locked';
 type InputMode = 'camera-live' | 'camera-record' | 'upload';
 
 // Weight quick-add options in kg
@@ -27,13 +30,12 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
   const recorderRef = useRef<SetRecorder | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const navigate = useNavigate();
   const { currentVelocity, currentZone, zoneConfig, addReading, visionSettings, updateVisionSettings } = useLiftStore();
 
   const [phase, setPhase] = useState<CameraPhase>('setup');
   const [error, setError] = useState<string | null>(null);
-  const [visionState, setVisionState] = useState<VisionState>('uninitialized');
-  const [detectedPlateWidth, setDetectedPlateWidth] = useState<number | null>(null);
-  const [manualPlateWidth, setManualPlateWidth] = useState<string>(String(visionSettings.plateDiameterMm / 10));
+  const [plateStatus, setPlateStatus] = useState<PlateStatus>('searching');
   const [repCount, setRepCount] = useState(0);
   const [exerciseCategory, setExerciseCategory] = useState<ExerciseCategory>(visionSettings.exerciseCategory as ExerciseCategory || 'squat');
   const [inputMode, setInputMode] = useState<InputMode>(initialInputMode || 'camera-record');
@@ -82,6 +84,8 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
   const prevDirection = useRef<'up' | 'down' | null>(null);
   const prevZone = useRef<ZoneResult | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const collectedReps = useRef<Rep[]>([]);
+  const repReadingsBuffer = useRef<VelocityReading[]>([]);
   const [barPath, setBarPath] = useState<BarPosition[]>([]);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
@@ -145,10 +149,6 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
         feedbackEngine.setEnabled(audioEnabled);
         feedbackEngine.resetLossTracking();
 
-        vm.subscribeState((state) => {
-          setVisionState(state);
-        });
-
         vm.subscribeError((err: VisionError) => {
           setError(err.message);
           setPhase('error');
@@ -164,7 +164,6 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
               if (Math.abs(dy) > 5) {
                 const dir = dy < 0 ? 'up' : 'down';
                 if (prevDirection.current === 'down' && dir === 'up') {
-                  setRepCount((c) => c + 1);
                   feedbackEngine.playRepComplete();
                 }
                 prevDirection.current = dir;
@@ -179,6 +178,7 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
             source: 'camera',
           };
           addReading(reading);
+          repReadingsBuffer.current.push(reading);
           feedbackEngine.checkVelocityLoss(reading.velocity);
 
           const newZone = calculateZone(reading.velocity, zoneConfig);
@@ -193,13 +193,74 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
           }
         });
 
+        vm.subscribeRep((rep) => {
+          // Build a Rep from the completed rep's positions
+          const repPositions = rep.positions;
+          const velocities = repPositions.map(p => Math.abs(p.velocity));
+          const meanVelocity = velocities.length > 0
+            ? velocities.reduce((a, b) => a + b, 0) / velocities.length
+            : 0;
+          const peakVelocity = velocities.length > 0 ? Math.max(...velocities) : 0;
+          const zone = calculateZone(meanVelocity, zoneConfig);
+
+          const newRep: Rep = {
+            repNumber: rep.repNumber,
+            meanVelocity,
+            peakVelocity,
+            zoneResult: zone,
+            readings: [...repReadingsBuffer.current],
+          };
+          collectedReps.current = [...collectedReps.current, newRep];
+          repReadingsBuffer.current = [];
+          setRepCount(collectedReps.current.length);
+          feedbackEngine.playRepComplete();
+        });
+
         vm.subscribeAnalysis((analysis) => {
-          if (analysis.barbell) {
-            setDetectedPlateWidth(Math.max(analysis.barbell.width, analysis.barbell.height));
+          if (analysis.barbell && analysis.barbell.confidence > 0.4) {
+            const pw = Math.max(analysis.barbell.width, analysis.barbell.height);
+            // Auto-calibrate on every confident detection — refines continuously
+            vm.calibrateFromDetection(pw);
+            updateVisionSettings({
+              isCalibrated: true,
+              pixelsPerMm: pw / visionSettings.plateDiameterMm,
+            });
+            setPlateStatus('locked');
+          } else if (!analysis.barbell) {
+            setPlateStatus('searching');
           }
         });
 
         await vm.initialize(videoEl);
+
+        // Start tracking immediately — no manual calibration step needed
+        vm.startTracking();
+        setRepCount(0);
+        collectedReps.current = [];
+        repReadingsBuffer.current = [];
+        prevDirection.current = null;
+        prevZone.current = null;
+        feedbackEngine.resetLossTracking();
+
+        // Start recording if in camera-record mode
+        if (inputMode === 'camera-record') {
+          const stream = (videoEl as HTMLVideoElement & { srcObject?: MediaStream }).srcObject;
+          if (stream) {
+            const recorder = new SetRecorder();
+            recorderRef.current = recorder;
+            recorder.start(stream, true);
+            setIsRecording(true);
+            setRecordingTime(0);
+            recordingTimerRef.current = setInterval(() => {
+              setRecordingTime(prev => prev + 1);
+            }, 1000);
+          }
+        }
+
+        // Start metronome if enabled
+        if (metronomeEnabled && metronomeBpm > 0) {
+          feedbackEngine.startMetronome(metronomeBpm);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to initialize camera');
         setPhase('error');
@@ -210,68 +271,6 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantsInit]);
 
-  // Calibrate from auto-detected plate
-  const handleAutoCalibrate = useCallback(() => {
-    if (!visionRef.current || !detectedPlateWidth) return;
-    visionRef.current.calibrateFromDetection(detectedPlateWidth);
-    updateVisionSettings({
-      isCalibrated: true,
-      pixelsPerMm: detectedPlateWidth / visionSettings.plateDiameterMm,
-    });
-    setPhase('tracking');
-  }, [detectedPlateWidth, visionSettings.plateDiameterMm, updateVisionSettings]);
-
-  // Calibrate from manual plate width input
-  const handleManualCalibrate = useCallback(() => {
-    if (!visionRef.current) return;
-    const plateWidth = parseFloat(manualPlateWidth);
-    if (isNaN(plateWidth) || plateWidth <= 0) {
-      setError('Please enter a valid plate diameter in cm');
-      return;
-    }
-    updateVisionSettings({ plateDiameterMm: plateWidth * 10 });
-    // For manual calibration, we need the pixel width from the detection
-    // If we have a detection, use it. Otherwise, prompt user to draw a box.
-    if (detectedPlateWidth) {
-      visionRef.current.calibrateFromDetection(detectedPlateWidth);
-      updateVisionSettings({
-        isCalibrated: true,
-        pixelsPerMm: detectedPlateWidth / (plateWidth * 10),
-      });
-      setPhase('tracking');
-    } else {
-      setError('No plate detected. Position the camera so the plate is visible and try again.');
-    }
-  }, [manualPlateWidth, detectedPlateWidth, updateVisionSettings]);
-
-  // Start tracking (with optional recording)
-  const handleStartTracking = useCallback(() => {
-    if (!visionRef.current) return;
-    visionRef.current.startTracking();
-    setPhase('tracking');
-    setRepCount(0);
-    feedbackEngine.resetLossTracking();
-
-    // Start recording if in camera-record mode
-    if (inputMode === 'camera-record' && videoRef.current) {
-      const stream = (videoRef.current as HTMLVideoElement & { srcObject?: MediaStream }).srcObject;
-      if (stream) {
-        const recorder = new SetRecorder();
-        recorderRef.current = recorder;
-        recorder.start(stream, true);
-        setIsRecording(true);
-        setRecordingTime(0);
-        recordingTimerRef.current = setInterval(() => {
-          setRecordingTime(prev => prev + 1);
-        }, 1000);
-      }
-    }
-
-    // Start metronome if enabled
-    if (metronomeEnabled && metronomeBpm > 0) {
-      feedbackEngine.startMetronome(metronomeBpm);
-    }
-  }, [inputMode, metronomeEnabled, metronomeBpm]);
 
   // Stop tracking + processing
   const handleStopTracking = useCallback(async () => {
@@ -279,28 +278,36 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
     visionRef.current.stopTracking();
     feedbackEngine.stopMetronome();
 
-    // Stop recording
+    // Stop recording timer
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
 
+    // Stop video recording and get result
+    let videoUrl: string | null = null;
     if (recorderRef.current?.getIsRecording()) {
-      await recorderRef.current.stop();
+      setPhase('processing');
+      const recording = await recorderRef.current.stop();
       setIsRecording(false);
+      videoUrl = recording?.videoUrl ?? null;
     }
 
     feedbackEngine.playSetComplete();
 
-    // Show processing overlay
-    setPhase('processing');
+    // Build review data and navigate
+    const reps = collectedReps.current;
+    const reviewData: SetReviewData = {
+      exercise: exerciseCategory,
+      weight,
+      reps,
+      readings: reps.flatMap(r => r.readings),
+      videoUrl,
+      barPath: barPath.map(p => ({ x: p.x, y: p.y })),
+    };
 
-    // Build set review data and transition
-    // (In a real implementation, we'd navigate to SetReviewScreen here)
-    setTimeout(() => {
-      setPhase('setup');
-    }, 2000);
-  }, []);
+    navigate('/review', { state: { data: reviewData } });
+  }, [exerciseCategory, weight, barPath, navigate]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -574,9 +581,8 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
               Plate diameter (cm)
             </label>
             <select
-              value={manualPlateWidth}
+              value={String(visionSettings.plateDiameterMm / 10)}
               onChange={(e) => {
-                setManualPlateWidth(e.target.value);
                 const val = parseFloat(e.target.value);
                 if (!isNaN(val)) updateVisionSettings({ plateDiameterMm: val * 10 });
               }}
@@ -586,19 +592,7 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
               <option value="45">45cm (Olympic Bumper)</option>
               <option value="35">35cm (Standard Iron)</option>
               <option value="25">25cm (Small Plates)</option>
-              <option value="custom">Custom...</option>
             </select>
-            {manualPlateWidth === 'custom' && (
-              <input
-                type="number"
-                placeholder="Enter plate diameter in cm"
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) updateVisionSettings({ plateDiameterMm: val * 10 });
-                }}
-                style={{ ...inputStyle, marginTop: 'var(--space-2)' }}
-              />
-            )}
           </div>
 
           <div style={{ marginBottom: 'var(--space-4)' }}>
@@ -650,7 +644,9 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
           ) : (
             <button
               onClick={() => {
-                setPhase('calibrating');
+                setPlateStatus('searching');
+                setBarPath([]);
+                setPhase('tracking');
                 setWantsInit(true);
               }}
               className="btn btn-pill btn-brand"
@@ -699,87 +695,6 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
     );
   }
 
-  // --- Render: Calibrating ---
-  if (phase === 'calibrating') {
-    return (
-      <div
-        className="flex flex-col items-center justify-center"
-        style={{
-          minHeight: 'calc(100vh - 120px)',
-          padding: 'var(--space-4)',
-          paddingBottom: '80px',
-        }}
-      >
-        <div style={{ position: 'relative', width: '100%', maxWidth: '500px', marginBottom: 'var(--space-4)' }}>
-          <video
-            ref={handleVideoRef}
-            autoPlay
-            playsInline
-            muted
-            style={{
-              width: '100%',
-              borderRadius: 'var(--radius-md)',
-              backgroundColor: '#1a1a1a',
-              aspectRatio: '16/9',
-              objectFit: 'cover',
-            }}
-          />
-          <canvas
-            ref={canvasRef}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              pointerEvents: 'none',
-            }}
-          />
-        </div>
-
-        <div className="card" style={{ width: '100%', maxWidth: '500px', textAlign: 'center' }}>
-          <div className="text-subheading" style={{ color: 'var(--color-text-primary)', marginBottom: 'var(--space-3)' }}>
-            Calibrate
-          </div>
-          <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
-            {visionState === 'calibrated'
-              ? 'Plate detected! Confirm to start tracking.'
-              : 'Looking for barbell plate...'}
-          </div>
-
-          {detectedPlateWidth && (
-            <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
-              Detected plate width: {detectedPlateWidth.toFixed(0)}px
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button
-              onClick={() => {
-                handleAutoCalibrate();
-                handleStartTracking();
-              }}
-              disabled={!detectedPlateWidth}
-              className="btn btn-pill btn-brand"
-              style={{ flex: 1, padding: 'var(--space-3)', opacity: detectedPlateWidth ? 1 : 0.5 }}
-            >
-              Auto Calibrate
-            </button>
-            <button
-              onClick={() => {
-                handleManualCalibrate();
-                handleStartTracking();
-              }}
-              className="btn btn-pill"
-              style={{ flex: 1, padding: 'var(--space-3)' }}
-            >
-              Manual
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // --- Render: Processing (analyzing) ---
   if (phase === 'processing') {
@@ -880,6 +795,17 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
             {isRecording && (
               <span style={{ color: '#fff', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>{formatTime(recordingTime)}</span>
             )}
+            {/* Plate lock indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{
+                width: '7px', height: '7px', borderRadius: '50%',
+                backgroundColor: plateStatus === 'locked' ? '#10b981' : '#f59e0b',
+                boxShadow: plateStatus === 'locked' ? '0 0 6px #10b981' : 'none',
+              }} />
+              <span style={{ color: plateStatus === 'locked' ? '#10b981' : '#f59e0b', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
+                {plateStatus === 'locked' ? 'PLATE' : 'SEARCHING'}
+              </span>
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <span style={{ color: '#fff', fontSize: '11px', fontFamily: 'var(--font-mono)', opacity: 0.8 }}>
