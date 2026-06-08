@@ -5,9 +5,21 @@
 -- Enable UUID generation
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Users (authentication)
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
 -- Athletes
 CREATE TABLE IF NOT EXISTS athletes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     bodyweight DECIMAL(5,2),
     primary_lifts TEXT[] DEFAULT '{}',
@@ -17,6 +29,8 @@ CREATE TABLE IF NOT EXISTS athletes (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_athletes_user ON athletes(user_id);
 
 -- Programs (training programs assigned to athletes)
 CREATE TABLE IF NOT EXISTS programs (

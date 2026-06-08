@@ -10,6 +10,8 @@ import { router as athleteRoutes } from './routes/athletes';
 import { router as syncRoutes } from './routes/sync';
 import { router as programRoutes } from './routes/programs';
 import { router as analyticsRoutes } from './routes/analytics';
+import { router as authRoutes } from './routes/auth';
+import { requireAuth } from './middleware/auth';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001');
@@ -36,11 +38,15 @@ app.get('/api/health', (req, res) => {
 
 // --- API Routes ---
 
-app.use('/api/sessions', sessionRoutes);
-app.use('/api/athletes', athleteRoutes);
-app.use('/api/sync', syncRoutes);
-app.use('/api/programs', programRoutes);
-app.use('/api/analytics', analyticsRoutes);
+// Auth (unauthenticated)
+app.use('/api/auth', authRoutes);
+
+// Protected routes — require valid JWT Bearer token
+app.use('/api/sessions', requireAuth, sessionRoutes);
+app.use('/api/athletes', requireAuth, athleteRoutes);
+app.use('/api/sync', requireAuth, syncRoutes);
+app.use('/api/programs', requireAuth, programRoutes);
+app.use('/api/analytics', requireAuth, analyticsRoutes);
 
 // --- Static file serving (production only) ---
 
