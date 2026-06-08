@@ -1,15 +1,18 @@
 // src/routes/athletes.ts
 
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import sql from '../db/pool';
 import { v4 as uuidv4 } from 'uuid';
+import { AuthRequest } from '../middleware/auth';
 
 export const router = Router();
 
-// GET /api/athletes
-router.get('/', async (req: Request, res: Response) => {
+// GET /api/athletes — list athletes belonging to the authenticated user
+router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const result = await sql`SELECT * FROM athletes ORDER BY created_at DESC`;
+    const result = await sql`
+      SELECT * FROM athletes WHERE user_id = ${req.user!.id} ORDER BY created_at DESC
+    `;
     res.json(result);
   } catch (error) {
     console.error('Error fetching athletes:', error);
@@ -17,15 +20,17 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/athletes
-router.post('/', async (req: Request, res: Response) => {
+// POST /api/athletes — create athlete scoped to authenticated user
+router.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const { name, bodyweight, primary_lifts, baseline_velocity, fatigue_threshold } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name required' });
     const id = uuidv4();
     const result = await sql`
-      INSERT INTO athletes (id, name, bodyweight, primary_lifts, baseline_velocity, fatigue_threshold)
+      INSERT INTO athletes (id, user_id, name, bodyweight, primary_lifts, baseline_velocity, fatigue_threshold)
       VALUES (
         ${id},
+        ${req.user!.id},
         ${name},
         ${bodyweight},
         ${primary_lifts || []},
@@ -41,8 +46,8 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// PUT /api/athletes/:id
-router.put('/:id', async (req: Request, res: Response) => {
+// PUT /api/athletes/:id — update own athlete
+router.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { name, bodyweight, primary_lifts, baseline_velocity, fatigue_threshold } = req.body;
     const result = await sql`
@@ -53,7 +58,7 @@ router.put('/:id', async (req: Request, res: Response) => {
         baseline_velocity = ${baseline_velocity},
         fatigue_threshold = ${fatigue_threshold},
         updated_at = NOW()
-      WHERE id = ${req.params.id}
+      WHERE id = ${req.params.id} AND user_id = ${req.user!.id}
       RETURNING *
     `;
     if (!result || result.length === 0) {
@@ -66,10 +71,12 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /api/athletes/:id
-router.delete('/:id', async (req: Request, res: Response) => {
+// DELETE /api/athletes/:id — delete own athlete
+router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const result = await sql`DELETE FROM athletes WHERE id=${req.params.id} RETURNING *`;
+    const result = await sql`
+      DELETE FROM athletes WHERE id = ${req.params.id} AND user_id = ${req.user!.id} RETURNING *
+    `;
     if (!result || result.length === 0) {
       return res.status(404).json({ error: 'Athlete not found' });
     }
