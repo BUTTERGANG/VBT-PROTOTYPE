@@ -33,7 +33,7 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
   const [error, setError] = useState<string | null>(null);
   const [visionState, setVisionState] = useState<VisionState>('uninitialized');
   const [detectedPlateWidth, setDetectedPlateWidth] = useState<number | null>(null);
-  const [manualPlateWidth, setManualPlateWidth] = useState<string>(String(visionSettings.plateDiameterMm));
+  const [manualPlateWidth, setManualPlateWidth] = useState<string>(String(visionSettings.plateDiameterMm / 10));
   const [repCount, setRepCount] = useState(0);
   const [exerciseCategory, setExerciseCategory] = useState<ExerciseCategory>(visionSettings.exerciseCategory as ExerciseCategory || 'squat');
   const [inputMode, setInputMode] = useState<InputMode>(initialInputMode || 'camera-record');
@@ -201,17 +201,17 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
     if (!visionRef.current) return;
     const plateWidth = parseFloat(manualPlateWidth);
     if (isNaN(plateWidth) || plateWidth <= 0) {
-      setError('Please enter a valid plate diameter in mm');
+      setError('Please enter a valid plate diameter in cm');
       return;
     }
-    updateVisionSettings({ plateDiameterMm: plateWidth });
+    updateVisionSettings({ plateDiameterMm: plateWidth * 10 });
     // For manual calibration, we need the pixel width from the detection
     // If we have a detection, use it. Otherwise, prompt user to draw a box.
     if (detectedPlateWidth) {
       visionRef.current.calibrateFromDetection(detectedPlateWidth);
       updateVisionSettings({
         isCalibrated: true,
-        pixelsPerMm: detectedPlateWidth / plateWidth,
+        pixelsPerMm: detectedPlateWidth / (plateWidth * 10),
       });
       setPhase('tracking');
     } else {
@@ -524,30 +524,30 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
 
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <label className="text-caption" style={{ color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>
-              Plate diameter (mm)
+              Plate diameter (cm)
             </label>
             <select
               value={manualPlateWidth}
               onChange={(e) => {
                 setManualPlateWidth(e.target.value);
                 const val = parseFloat(e.target.value);
-                if (!isNaN(val)) updateVisionSettings({ plateDiameterMm: val });
+                if (!isNaN(val)) updateVisionSettings({ plateDiameterMm: val * 10 });
               }}
               style={inputStyle}
             >
-              <option value={String(exerciseConfig.defaultPlateDiameterMm)}>{exerciseConfig.defaultPlateDiameterMm}mm (Default for {exerciseConfig.label})</option>
-              <option value="450">450mm (Olympic Bumper)</option>
-              <option value="350">350mm (Standard Iron)</option>
-              <option value="250">250mm (Small Plates)</option>
+              <option value={String(exerciseConfig.defaultPlateDiameterMm / 10)}>{exerciseConfig.defaultPlateDiameterMm / 10}cm (Default for {exerciseConfig.label})</option>
+              <option value="45">45cm (Olympic Bumper)</option>
+              <option value="35">35cm (Standard Iron)</option>
+              <option value="25">25cm (Small Plates)</option>
               <option value="custom">Custom...</option>
             </select>
             {manualPlateWidth === 'custom' && (
               <input
                 type="number"
-                placeholder="Enter plate diameter in mm"
+                placeholder="Enter plate diameter in cm"
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) updateVisionSettings({ plateDiameterMm: val });
+                  if (!isNaN(val)) updateVisionSettings({ plateDiameterMm: val * 10 });
                 }}
                 style={{ ...inputStyle, marginTop: 'var(--space-2)' }}
               />

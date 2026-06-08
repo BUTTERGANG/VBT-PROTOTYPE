@@ -6,7 +6,7 @@ export function SettingsScreen() {
 
   const [targetVel, setTargetVel] = useState(String(zoneConfig.targetVelocity));
   const [tolerance, setTolerance] = useState(String(zoneConfig.tolerance));
-  const [plateDiam, setPlateDiam] = useState(String(visionSettings.plateDiameterMm));
+  const [plateDiam, setPlateDiam] = useState(String(visionSettings.plateDiameterMm / 10));
   const [recordingEnabled, setRecordingEnabled] = useState(visionSettings.recordingEnabled);
   const [zoneSaved, setZoneSaved] = useState(false);
   const [cameraSaved, setCameraSaved] = useState(false);
@@ -28,7 +28,7 @@ export function SettingsScreen() {
   const handleSaveCamera = () => {
     const pd = parseFloat(plateDiam);
     if (pd > 0) {
-      updateVisionSettings({ plateDiameterMm: pd, recordingEnabled });
+      updateVisionSettings({ plateDiameterMm: pd * 10, recordingEnabled });
       setCameraSaved(true);
       setTimeout(() => setCameraSaved(false), 2000);
     }
@@ -90,14 +90,14 @@ export function SettingsScreen() {
         <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', fontSize: '11px' }}>CAMERA</div>
 
         <div style={{ marginBottom: 'var(--space-4)' }}>
-          <label className="app-label">Plate Diameter (mm)</label>
+          <label className="app-label">Plate Diameter (cm)</label>
           <input
-            type="number" step="10" value={plateDiam}
+            type="number" step="1" value={plateDiam}
             onChange={(e) => setPlateDiam(e.target.value)}
             className="app-input mono"
           />
           <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
-            Used for scale calibration. Standard Olympic plate: 450mm
+            Used for scale calibration. Standard Olympic plate: 45cm
           </div>
         </div>
 
