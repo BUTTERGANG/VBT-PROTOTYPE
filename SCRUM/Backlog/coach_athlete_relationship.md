@@ -1,6 +1,6 @@
 ---
 title: "Coach-Athlete Backend Relationship"
-status: backlog
+status: sprint
 priority: P2
 project: VBT-PROTOTYPE
 type: dev
