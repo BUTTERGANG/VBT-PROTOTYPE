@@ -109,107 +109,106 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
     }
   }, []);
 
-  // Initialize vision manager
-  const initVision = useCallback(async () => {
-    setError(null);
+  // wantsInit: set true by the button, cleared by the effect below.
+  // Using state (not a ref) so the effect re-runs after the calibrating
+  // phase re-renders and commits its <video> element to the DOM.
+  const [wantsInit, setWantsInit] = useState(false);
+
+  useEffect(() => {
+    if (!wantsInit) return;
+    setWantsInit(false);
 
     if (!videoRef.current) {
-      setError('Camera not available — please reload and allow camera access');
+      setError('Camera element not found — please reload');
       setPhase('error');
       return;
     }
 
-    try {
-      const vm = VisionManager.getInstance({
-        ...DEFAULT_VISION_CONFIG,
-        plateDiameterMm: visionSettings.plateDiameterMm,
-        movementThreshold: exerciseConfig.minRepDisplacement / 20,
-        targetFps: getRecommendedFps(),
-      });
-      vm.updateConfig({
-        deviceId: selectedCameraId || undefined,
-        plateDiameterMm: visionSettings.plateDiameterMm,
-      });
-      visionRef.current = vm;
+    const videoEl = videoRef.current;
 
-      // Set up loss tracking
-      feedbackEngine.setLossThreshold(modeConfig.lossThreshold);
-      feedbackEngine.setLossCueEnabled(lossCueEnabled);
-      feedbackEngine.setEnabled(audioEnabled);
-      feedbackEngine.resetLossTracking();
+    const run = async () => {
+      try {
+        const vm = VisionManager.getInstance({
+          ...DEFAULT_VISION_CONFIG,
+          plateDiameterMm: visionSettings.plateDiameterMm,
+          movementThreshold: exerciseConfig.minRepDisplacement / 20,
+          targetFps: getRecommendedFps(),
+        });
+        vm.updateConfig({
+          deviceId: selectedCameraId || undefined,
+          plateDiameterMm: visionSettings.plateDiameterMm,
+        });
+        visionRef.current = vm;
 
-      // Subscribe to state changes — show camera as soon as it's ready
-      vm.subscribeState((state) => {
-        setVisionState(state);
-        if (state === 'camera-ready' || state === 'calibrated') {
-          setPhase('calibrating'); // transitions from setup → camera view
-        }
-      });
+        feedbackEngine.setLossThreshold(modeConfig.lossThreshold);
+        feedbackEngine.setLossCueEnabled(lossCueEnabled);
+        feedbackEngine.setEnabled(audioEnabled);
+        feedbackEngine.resetLossTracking();
 
-      vm.subscribeError((err: VisionError) => {
-        setError(err.message);
-        setPhase('error');
-      });
-
-      vm.subscribePosition((position: BarPosition) => {
-        setBarPath((prev) => {
-          const next = [...prev, position];
-          // Count reps from direction changes
-          if (next.length >= 3) {
-            const last = next[next.length - 1];
-            const prev = next[next.length - 3];
-            const dy = last.y - prev.y;
-            if (Math.abs(dy) > 5) {
-              const dir = dy < 0 ? 'up' : 'down';
-              if (prevDirection.current === 'down' && dir === 'up') {
-                setRepCount((c) => c + 1);
-                feedbackEngine.playRepComplete();
-              }
-              prevDirection.current = dir;
-            }
-          }
-          return next.length > 100 ? next.slice(-100) : next;
+        vm.subscribeState((state) => {
+          setVisionState(state);
         });
 
-        // Feed velocity into the store (same as BLE path)
-        const reading: VelocityReading = {
-          timestamp: position.timestamp ?? Date.now(),
-          velocity: Math.abs(position.velocity),
-          source: 'camera',
-        };
-        addReading(reading);
+        vm.subscribeError((err: VisionError) => {
+          setError(err.message);
+          setPhase('error');
+        });
 
-        // Loss cue check
-        feedbackEngine.checkVelocityLoss(reading.velocity);
+        vm.subscribePosition((position: BarPosition) => {
+          setBarPath((prev) => {
+            const next = [...prev, position];
+            if (next.length >= 3) {
+              const last = next[next.length - 1];
+              const prev3 = next[next.length - 3];
+              const dy = last.y - prev3.y;
+              if (Math.abs(dy) > 5) {
+                const dir = dy < 0 ? 'up' : 'down';
+                if (prevDirection.current === 'down' && dir === 'up') {
+                  setRepCount((c) => c + 1);
+                  feedbackEngine.playRepComplete();
+                }
+                prevDirection.current = dir;
+              }
+            }
+            return next.length > 100 ? next.slice(-100) : next;
+          });
 
-        // Audio zone feedback on zone change
-        const newZone = calculateZone(reading.velocity, zoneConfig);
-        if (newZone !== prevZone.current) {
-          prevZone.current = newZone;
-          feedbackEngine.playZoneTone(newZone);
-        }
+          const reading: VelocityReading = {
+            timestamp: position.timestamp ?? Date.now(),
+            velocity: Math.abs(position.velocity),
+            source: 'camera',
+          };
+          addReading(reading);
+          feedbackEngine.checkVelocityLoss(reading.velocity);
 
-        // Feed to recorder if active
-        if (recorderRef.current?.getIsRecording()) {
-          recorderRef.current.addPosition(position);
-          recorderRef.current.addReading(reading);
-        }
-      });
+          const newZone = calculateZone(reading.velocity, zoneConfig);
+          if (newZone !== prevZone.current) {
+            prevZone.current = newZone;
+            feedbackEngine.playZoneTone(newZone);
+          }
 
-      // Subscribe to frame analysis for plate detection feedback
-      vm.subscribeAnalysis((analysis) => {
-        if (analysis.barbell) {
-          const plateWidth = Math.max(analysis.barbell.width, analysis.barbell.height);
-          setDetectedPlateWidth(plateWidth);
-        }
-      });
+          if (recorderRef.current?.getIsRecording()) {
+            recorderRef.current.addPosition(position);
+            recorderRef.current.addReading(reading);
+          }
+        });
 
-      await vm.initialize(videoRef.current);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to initialize camera');
-      setPhase('error');
-    }
-  }, [visionSettings.plateDiameterMm, addReading]);
+        vm.subscribeAnalysis((analysis) => {
+          if (analysis.barbell) {
+            setDetectedPlateWidth(Math.max(analysis.barbell.width, analysis.barbell.height));
+          }
+        });
+
+        await vm.initialize(videoEl);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to initialize camera');
+        setPhase('error');
+      }
+    };
+
+    run();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantsInit]);
 
   // Calibrate from auto-detected plate
   const handleAutoCalibrate = useCallback(() => {
@@ -650,7 +649,10 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
             </button>
           ) : (
             <button
-              onClick={initVision}
+              onClick={() => {
+                setPhase('calibrating');
+                setWantsInit(true);
+              }}
               className="btn btn-pill btn-brand"
               style={{ width: '100%', padding: 'var(--space-3)' }}
             >
@@ -660,9 +662,6 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
         </div>
       </div>
 
-      {/* Hidden video always mounted so videoRef is populated before button click */}
-      <video ref={handleVideoRef} autoPlay playsInline muted
-        style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }} />
       </>
     );
   }
