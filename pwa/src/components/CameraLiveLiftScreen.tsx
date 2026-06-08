@@ -1,7 +1,6 @@
 // src/components/CameraLiveLiftScreen.tsx
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { flushSync } from 'react-dom';
 import { useLiftStore } from '../store/liftStore';
 import { VisionManager, DEFAULT_VISION_CONFIG } from '../services/vision';
 import type { VisionState, VisionError, BarPosition } from '../services/vision';
@@ -101,30 +100,32 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
   const targetVelocity = customTargetVelocity ?? modeConfig.defaultTargetVelocity;
   const zoneColor = getZoneColor(currentZone);
 
+  // Callback ref — keeps videoRef current AND notifies VisionManager when
+  // the element changes (e.g. hidden setup video → visible calibrating video)
+  const handleVideoRef = useCallback((el: HTMLVideoElement | null) => {
+    (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
+    if (el && visionRef.current) {
+      visionRef.current.setVideoElement(el);
+    }
+  }, []);
+
   // Initialize vision manager
   const initVision = useCallback(async () => {
-    // Flush the phase→'calibrating' state update synchronously so the
-    // <video> element is committed to the DOM before we read videoRef
-    flushSync(() => {
-      setPhase('calibrating');
-      setError(null);
-    });
+    setError(null);
 
     if (!videoRef.current) {
-      setError('Camera element unavailable — please try again');
+      setError('Camera not available — please reload and allow camera access');
       setPhase('error');
       return;
     }
 
     try {
-
       const vm = VisionManager.getInstance({
         ...DEFAULT_VISION_CONFIG,
         plateDiameterMm: visionSettings.plateDiameterMm,
         movementThreshold: exerciseConfig.minRepDisplacement / 20,
         targetFps: getRecommendedFps(),
       });
-      // Apply current camera selection and plate config (handles re-init after settings change)
       vm.updateConfig({
         deviceId: selectedCameraId || undefined,
         plateDiameterMm: visionSettings.plateDiameterMm,
@@ -137,11 +138,11 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
       feedbackEngine.setEnabled(audioEnabled);
       feedbackEngine.resetLossTracking();
 
-      // Subscribe to state changes
+      // Subscribe to state changes — show camera as soon as it's ready
       vm.subscribeState((state) => {
         setVisionState(state);
-        if (state === 'calibrated') {
-          setPhase('calibrating');
+        if (state === 'camera-ready' || state === 'calibrated') {
+          setPhase('calibrating'); // transitions from setup → camera view
         }
       });
 
@@ -365,6 +366,7 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
     };
 
     return (
+      <>
       <div
         className="flex flex-col items-center justify-center"
         style={{
@@ -657,6 +659,11 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
           )}
         </div>
       </div>
+
+      {/* Hidden video always mounted so videoRef is populated before button click */}
+      <video ref={handleVideoRef} autoPlay playsInline muted
+        style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }} />
+      </>
     );
   }
 
@@ -706,7 +713,7 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
       >
         <div style={{ position: 'relative', width: '100%', maxWidth: '500px', marginBottom: 'var(--space-4)' }}>
           <video
-            ref={videoRef}
+            ref={handleVideoRef}
             autoPlay
             playsInline
             muted
@@ -814,7 +821,7 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
       {/* Full-screen camera preview */}
       <div style={{ position: 'relative', width: '100%', height: '100dvh', backgroundColor: '#000' }}>
         <video
-          ref={videoRef}
+          ref={handleVideoRef}
           autoPlay
           playsInline
           muted

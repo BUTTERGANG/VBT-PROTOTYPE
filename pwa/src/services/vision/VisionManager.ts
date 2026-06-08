@@ -120,6 +120,20 @@ export class VisionManager {
     this.config = { ...this.config, ...partial };
   }
 
+  /** Move the camera stream to a new video element (e.g. when phase changes swap a hidden → visible element). */
+  setVideoElement(el: HTMLVideoElement): void {
+    if (el === this.video) return;
+    this.video = el;
+    if (this.stream) {
+      el.srcObject = this.stream;
+      el.play().catch(() => {});
+      if (this.canvas) {
+        this.canvas.width = el.videoWidth || 1280;
+        this.canvas.height = el.videoHeight || 720;
+      }
+    }
+  }
+
   getVideoElement(): HTMLVideoElement | null {
     return this.video;
   }
