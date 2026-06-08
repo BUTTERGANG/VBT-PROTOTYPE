@@ -83,6 +83,7 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
   const prevZone = useRef<ZoneResult | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [barPath, setBarPath] = useState<BarPosition[]>([]);
+  const initPending = useRef(false);
 
   // Derived values
   const modeConfig = getLiftingModeConfig(liftingMode);
@@ -95,7 +96,6 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
     if (!videoRef.current) return;
 
     try {
-      setPhase('setup');
       setError(null);
 
       const vm = VisionManager.getInstance({
@@ -283,6 +283,14 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
       visionRef.current?.dispose();
     };
   }, []);
+
+  // After phase change renders the video element, complete any pending init
+  useEffect(() => {
+    if (initPending.current && videoRef.current) {
+      initPending.current = false;
+      initVision();
+    }
+  });
 
   // Draw overlay on canvas
   useEffect(() => {
@@ -602,7 +610,10 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
             </button>
           ) : (
             <button
-              onClick={initVision}
+              onClick={() => {
+                setPhase('calibrating');
+                initPending.current = true;
+              }}
               className="btn btn-pill btn-brand"
               style={{ width: '100%', padding: 'var(--space-3)' }}
             >
