@@ -1,6 +1,6 @@
 ---
 title: "Dark/Light Theme Toggle"
-status: backlog
+status: sprint
 priority: P3
 project: VBT-PROTOTYPE
 type: dev
