@@ -1,6 +1,7 @@
 // src/components/CameraLiveLiftScreen.tsx
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useLiftStore } from '../store/liftStore';
 import { VisionManager, DEFAULT_VISION_CONFIG } from '../services/vision';
 import type { VisionState, VisionError, BarPosition } from '../services/vision';
@@ -83,7 +84,6 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
   const prevZone = useRef<ZoneResult | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [barPath, setBarPath] = useState<BarPosition[]>([]);
-  const initPending = useRef(false);
 
   // Derived values
   const modeConfig = getLiftingModeConfig(liftingMode);
@@ -93,10 +93,20 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
 
   // Initialize vision manager
   const initVision = useCallback(async () => {
-    if (!videoRef.current) return;
+    // Flush the phase→'calibrating' state update synchronously so the
+    // <video> element is committed to the DOM before we read videoRef
+    flushSync(() => {
+      setPhase('calibrating');
+      setError(null);
+    });
+
+    if (!videoRef.current) {
+      setError('Camera element unavailable — please try again');
+      setPhase('error');
+      return;
+    }
 
     try {
-      setError(null);
 
       const vm = VisionManager.getInstance({
         ...DEFAULT_VISION_CONFIG,
@@ -283,14 +293,6 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
       visionRef.current?.dispose();
     };
   }, []);
-
-  // After phase change renders the video element, complete any pending init
-  useEffect(() => {
-    if (initPending.current && videoRef.current) {
-      initPending.current = false;
-      initVision();
-    }
-  });
 
   // Draw overlay on canvas
   useEffect(() => {
@@ -610,10 +612,7 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
             </button>
           ) : (
             <button
-              onClick={() => {
-                setPhase('calibrating');
-                initPending.current = true;
-              }}
+              onClick={initVision}
               className="btn btn-pill btn-brand"
               style={{ width: '100%', padding: 'var(--space-3)' }}
             >

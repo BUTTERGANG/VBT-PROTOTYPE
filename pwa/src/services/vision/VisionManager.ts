@@ -155,11 +155,20 @@ export class VisionManager {
       this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
       if (!this.ctx) throw this.makeError('camera-unavailable', 'Could not create canvas context');
 
-      // Load ML models in parallel
-      await Promise.all([
-        this.poseEstimator.initialize(),
-        this.barbellDetector.initialize(),
-      ]);
+      // Load ML models with an 8-second timeout — camera starts even if
+      // CDN is unreachable; barbell detector falls back to contour-based detection
+      const modelTimeout = new Promise<void>(resolve => setTimeout(resolve, 8000));
+      try {
+        await Promise.race([
+          Promise.all([
+            this.poseEstimator.initialize(),
+            this.barbellDetector.initialize(),
+          ]),
+          modelTimeout,
+        ]);
+      } catch {
+        console.warn('[VisionManager] ML model load failed — using fallback detection');
+      }
 
       // Request camera
       this.setState('requesting-camera');
