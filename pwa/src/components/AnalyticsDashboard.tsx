@@ -1,5 +1,3 @@
-// src/components/AnalyticsDashboard.tsx
-
 import { useState, useEffect } from 'react';
 import { api } from '../services/api/client';
 import type { DashboardAnalytics } from '../types';
@@ -9,12 +7,12 @@ interface AnalyticsDashboardProps {
 }
 
 const ZONE_COLORS: Record<string, string> = {
-  FAST: '#ef4444',
-  IN_RANGE: '#10b981',
-  SLOW: '#6b7280',
+  FAST: 'var(--zone-fast)',
+  IN_RANGE: 'var(--zone-in-range)',
+  SLOW: 'var(--zone-slow)',
 };
 
-const TREND_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+const TREND_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export function AnalyticsDashboard({ athleteId }: AnalyticsDashboardProps) {
   const [data, setData] = useState<DashboardAnalytics | null>(null);
@@ -29,8 +27,7 @@ export function AnalyticsDashboard({ athleteId }: AnalyticsDashboardProps) {
   const loadDashboard = async () => {
     try {
       setLoading(true);
-const result: any = await api.getDashboard({ athlete_id: athleteId, days });
-      // Map snake_case API response to camelCase types
+      const result: any = await api.getDashboard({ athlete_id: athleteId, days });
       setData({
         velocityTrend: result.velocity_trend || [],
         zoneDistribution: result.zone_distribution || [],
@@ -39,15 +36,9 @@ const result: any = await api.getDashboard({ athlete_id: athleteId, days });
       });
       setOffline(false);
     } catch (err) {
-      console.warn('Analytics API unavailable, showing empty state:', err);
+      console.warn('Analytics API unavailable:', err);
       setOffline(true);
-      // Provide empty data so the UI still renders
-      setData({
-        velocityTrend: [],
-        zoneDistribution: [],
-        fatigueAlerts: [],
-        programAdherence: [],
-      });
+      setData({ velocityTrend: [], zoneDistribution: [], fatigueAlerts: [], programAdherence: [] });
     } finally {
       setLoading(false);
     }
@@ -55,8 +46,16 @@ const result: any = await api.getDashboard({ athlete_id: athleteId, days });
 
   if (loading) {
     return (
-      <div className="screen-container" style={{ paddingBottom: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
-        <span className="text-caption" style={{ color: 'var(--color-text-muted)' }}>Loading analytics...</span>
+      <div className="screen-container" style={{ paddingBottom: '80px' }}>
+        <div className="page-header" style={{ paddingTop: 'var(--space-2)' }}>
+          <h2 className="text-heading page-title">Analytics</h2>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <div className="skeleton" style={{ height: '44px', borderRadius: 'var(--radius-pill)', width: '200px' }} />
+          <div className="skeleton" style={{ height: '100px', borderRadius: 'var(--radius-xl)' }} />
+          <div className="skeleton" style={{ height: '200px', borderRadius: 'var(--radius-xl)' }} />
+          <div className="skeleton" style={{ height: '140px', borderRadius: 'var(--radius-xl)' }} />
+        </div>
       </div>
     );
   }
@@ -65,62 +64,41 @@ const result: any = await api.getDashboard({ athlete_id: athleteId, days });
     return (
       <div className="screen-container" style={{ paddingBottom: '80px' }}>
         <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
-          <div style={{ fontSize: '32px', marginBottom: 'var(--space-3)' }}>📊</div>
           <div className="text-body" style={{ color: 'var(--color-text-muted)' }}>No data available</div>
         </div>
       </div>
     );
   }
 
-  // Zone distribution bar
   const totalZoneReps = data.zoneDistribution.reduce((sum, z) => sum + z.count, 0);
-
-  // Group velocity trend by exercise
   const trendByExercise: Record<string, { date: string; avgVelocity: number }[]> = {};
-  data.velocityTrend.forEach((point) => {
+  data.velocityTrend.forEach(point => {
     if (!trendByExercise[point.exercise]) trendByExercise[point.exercise] = [];
-    trendByExercise[point.exercise].push({
-      date: point.sessionDate,
-      avgVelocity: point.avgVelocity,
-    });
+    trendByExercise[point.exercise].push({ date: point.sessionDate, avgVelocity: point.avgVelocity });
   });
-
   const exercises = Object.keys(trendByExercise);
-
-  // Find max velocity for chart scaling
-  const maxVelocity = Math.max(1, ...data.velocityTrend.map((p) => p.avgVelocity));
+  const maxVelocity = Math.max(1, ...data.velocityTrend.map(p => p.avgVelocity));
 
   return (
     <div className="screen-container" style={{ paddingBottom: '80px' }}>
-      {/* Offline banner */}
+      <div className="page-header" style={{ paddingTop: 'var(--space-2)' }}>
+        <h2 className="text-heading page-title">Analytics</h2>
+      </div>
+
       {offline && (
-        <div style={{
-          padding: 'var(--space-2) var(--space-4)',
-          backgroundColor: 'rgba(245,158,11,0.1)',
-          borderBottom: '1px solid rgba(245,158,11,0.2)',
-          fontSize: '11px',
-          fontFamily: 'var(--font-mono)',
-          color: '#f59e0b',
-          textAlign: 'center',
-          marginBottom: 'var(--space-3)',
-        }}>
-          ⚡ Offline — connect to sync analytics
+        <div className="offline-banner">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Offline — connect to sync analytics
         </div>
       )}
 
       {/* Period selector */}
-      <div className="flex gap-2" style={{ marginBottom: 'var(--space-4)', paddingTop: 'var(--space-2)' }}>
-        {[7, 14, 30, 90].map((d) => (
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+        {[7, 14, 30, 90].map(d => (
           <button
             key={d}
             onClick={() => setDays(d)}
-            className="btn btn-pill btn-secondary"
-            style={{
-              padding: 'var(--space-2) var(--space-3)',
-              fontSize: '12px',
-              backgroundColor: days === d ? 'var(--color-brand)' : undefined,
-              color: days === d ? '#000' : undefined,
-            }}
+            className={`btn-period${days === d ? ' active' : ''}`}
           >
             {d}d
           </button>
@@ -129,31 +107,26 @@ const result: any = await api.getDashboard({ athlete_id: athleteId, days });
 
       {/* Zone Distribution */}
       <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
-          ZONE DISTRIBUTION
-        </div>
+        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontSize: '11px' }}>ZONE DISTRIBUTION</div>
         {totalZoneReps > 0 ? (
           <>
-            <div className="flex" style={{ height: '12px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: 'var(--space-3)' }}>
-              {data.zoneDistribution.map((zone) => (
+            <div style={{ display: 'flex', height: '14px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: 'var(--space-3)', backgroundColor: 'var(--color-bg)' }}>
+              {data.zoneDistribution.map(zone => (
                 <div
                   key={zone.zoneResult}
-                  style={{
-                    width: `${zone.percentage}%`,
-                    backgroundColor: ZONE_COLORS[zone.zoneResult] || '#6b7280',
-                    transition: 'width 0.3s',
-                  }}
+                  title={`${zone.zoneResult === 'IN_RANGE' ? 'In Zone' : zone.zoneResult === 'FAST' ? 'Too Fast' : 'Too Slow'}: ${zone.percentage}%`}
+                  style={{ width: `${zone.percentage}%`, backgroundColor: ZONE_COLORS[zone.zoneResult] || 'var(--zone-slow)', transition: 'width 0.3s' }}
                 />
               ))}
             </div>
-            <div className="flex gap-4">
-              {data.zoneDistribution.map((zone) => (
-                <div key={zone.zoneResult} className="flex items-center gap-1.5">
+            <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+              {data.zoneDistribution.map(zone => (
+                <div key={zone.zoneResult} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: ZONE_COLORS[zone.zoneResult] }} />
                   <span className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
                     {zone.zoneResult === 'IN_RANGE' ? 'In Zone' : zone.zoneResult === 'FAST' ? 'Too Fast' : 'Too Slow'}
                   </span>
-                  <span className="text-mono-sm" style={{ color: 'var(--color-text-primary)' }}>
+                  <span className="text-mono" style={{ color: 'var(--color-text-primary)', fontSize: '12px', fontWeight: 700 }}>
                     {zone.percentage}%
                   </span>
                 </div>
@@ -167,90 +140,60 @@ const result: any = await api.getDashboard({ athlete_id: athleteId, days });
 
       {/* Velocity Trend Chart */}
       <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
-          VELOCITY TREND
-        </div>
+        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontSize: '11px' }}>VELOCITY TREND</div>
         {data.velocityTrend.length > 0 ? (
-          <div style={{ position: 'relative', height: '160px' }}>
-            {/* Y-axis labels */}
-            <div
-              className="flex flex-col justify-between"
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                bottom: 20,
-                width: '30px',
-                textAlign: 'right',
-              }}
-            >
-              <span className="text-mono" style={{ fontSize: '9px', color: 'var(--color-text-muted)', transform: 'translateY(-50%)' }}>
-                {maxVelocity.toFixed(1)}
-              </span>
-              <span className="text-mono" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
-                {(maxVelocity / 2).toFixed(1)}
-              </span>
-              <span className="text-mono" style={{ fontSize: '9px', color: 'var(--color-text-muted)', transform: 'translateY(50%)' }}>
-                0
-              </span>
+          <div style={{ position: 'relative', height: '200px' }}>
+            {/* Y-axis */}
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: '24px', width: '32px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'flex-end', paddingRight: '4px' }}>
+              {[maxVelocity, maxVelocity / 2, 0].map((v, i) => (
+                <span key={i} className="text-mono" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
+                  {v.toFixed(1)}
+                </span>
+              ))}
             </div>
 
-            {/* Chart area */}
-            <div
-              style={{
-                position: 'absolute',
-                left: '35px',
-                right: 0,
-                top: 0,
-                bottom: '20px',
-                display: 'flex',
-                alignItems: 'flex-end',
-                gap: '2px',
-              }}
-            >
+            {/* Gridlines */}
+            <div style={{ position: 'absolute', left: '36px', right: 0, top: 0, bottom: '24px' }}>
+              {[0, 50, 100].map(pct => (
+                <div key={pct} style={{
+                  position: 'absolute', left: 0, right: 0,
+                  top: `${pct}%`, borderTop: '1px solid var(--color-border-subtle)',
+                }} />
+              ))}
+            </div>
+
+            {/* Chart bars */}
+            <div style={{
+              position: 'absolute', left: '36px', right: 0,
+              top: 0, bottom: '24px',
+              display: 'flex', alignItems: 'flex-end', gap: '2px',
+            }}>
               {data.velocityTrend.map((point, i) => {
                 const exerciseIdx = exercises.indexOf(point.exercise);
                 const height = (point.avgVelocity / maxVelocity) * 100;
                 return (
                   <div
                     key={i}
-                    style={{
-                      flex: 1,
-                      height: `${Math.max(height, 2)}%`,
-                      backgroundColor: TREND_COLORS[exerciseIdx % TREND_COLORS.length],
-                      borderRadius: '2px 2px 0 0',
-                      minWidth: '4px',
-                      opacity: 0.85,
-                    }}
                     title={`${point.exercise}: ${point.avgVelocity.toFixed(2)} m/s (${new Date(point.sessionDate).toLocaleDateString()})`}
+                    style={{
+                      flex: 1, height: `${Math.max(height, 2)}%`,
+                      backgroundColor: TREND_COLORS[exerciseIdx % TREND_COLORS.length],
+                      borderRadius: '2px 2px 0 0', minWidth: '4px', opacity: 0.85,
+                      cursor: 'default',
+                    }}
                   />
                 );
               })}
             </div>
 
-            {/* X-axis */}
-            <div
-              style={{
-                position: 'absolute',
-                left: '35px',
-                right: 0,
-                bottom: 0,
-                height: '20px',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              {data.velocityTrend.length > 0 && (
-                <>
-                  <span className="text-mono" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
-                    {new Date(data.velocityTrend[0].sessionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </span>
-                  <div style={{ flex: 1 }} />
-                  <span className="text-mono" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
-                    {new Date(data.velocityTrend[data.velocityTrend.length - 1].sessionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </span>
-                </>
-              )}
+            {/* X-axis dates */}
+            <div style={{ position: 'absolute', left: '36px', right: 0, bottom: 0, height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span className="text-mono" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
+                {new Date(data.velocityTrend[0].sessionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+              <span className="text-mono" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
+                {new Date(data.velocityTrend[data.velocityTrend.length - 1].sessionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
             </div>
           </div>
         ) : (
@@ -259,12 +202,11 @@ const result: any = await api.getDashboard({ athlete_id: athleteId, days });
           </div>
         )}
 
-        {/* Legend */}
         {exercises.length > 0 && (
-          <div className="flex gap-3" style={{ marginTop: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-3)', flexWrap: 'wrap', borderTop: '1px solid var(--color-border-subtle)', paddingTop: 'var(--space-3)' }}>
             {exercises.map((ex, i) => (
-              <div key={ex} className="flex items-center gap-1">
-                <div style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: TREND_COLORS[i % TREND_COLORS.length] }} />
+              <div key={ex} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: TREND_COLORS[i % TREND_COLORS.length] }} />
                 <span className="text-caption" style={{ color: 'var(--color-text-muted)' }}>{ex}</span>
               </div>
             ))}
@@ -275,33 +217,29 @@ const result: any = await api.getDashboard({ athlete_id: athleteId, days });
       {/* Fatigue Alerts */}
       {data.fatigueAlerts.length > 0 && (
         <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-          <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
+          <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontSize: '11px' }}>
             FATIGUE ALERTS ({data.fatigueAlerts.length})
           </div>
-          <div className="flex flex-col gap-2">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             {data.fatigueAlerts.slice(0, 5).map((alert, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between"
                 style={{
-                  padding: 'var(--space-3)',
-                  backgroundColor: 'var(--color-bg)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: 'var(--space-3)', backgroundColor: 'var(--color-bg)',
                   borderRadius: 'var(--radius-sm)',
-                  borderLeft: `3px solid ${alert.velocityDropPct > 0.15 ? '#ef4444' : '#f59e0b'}`,
+                  borderLeft: `3px solid ${alert.velocityDropPct > 0.15 ? 'var(--zone-fast)' : '#f59e0b'}`,
                 }}
               >
                 <div>
-                  <div className="text-body-sm" style={{ color: 'var(--color-text-primary)' }}>
+                  <div className="text-body-sm" style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
                     {alert.exercise} — Set {alert.setNumber}
                   </div>
                   <div className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
                     {new Date(alert.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </div>
                 </div>
-                <div className="text-mono" style={{
-                  color: alert.velocityDropPct > 0.15 ? '#ef4444' : '#f59e0b',
-                  fontWeight: 600,
-                }}>
+                <div className="text-mono" style={{ color: alert.velocityDropPct > 0.15 ? 'var(--zone-fast)' : '#f59e0b', fontWeight: 700, fontSize: '14px' }}>
                   -{(alert.velocityDropPct * 100).toFixed(0)}%
                 </div>
               </div>
@@ -313,28 +251,24 @@ const result: any = await api.getDashboard({ athlete_id: athleteId, days });
       {/* Program Adherence */}
       {data.programAdherence.length > 0 && (
         <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-          <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
-            PROGRAM ADHERENCE
-          </div>
-          <div className="flex flex-col gap-3">
+          <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontSize: '11px' }}>PROGRAM ADHERENCE</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             {data.programAdherence.map((prog, i) => (
               <div key={i}>
-                <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-1)' }}>
-                  <span className="text-body-sm" style={{ color: 'var(--color-text-primary)' }}>
-                    {prog.programName}
-                  </span>
-                  <span className="text-mono-sm" style={{ color: 'var(--color-text-muted)' }}>
-                    {prog.sessionsCompleted} sessions
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-1)' }}>
+                  <span className="text-body-sm" style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{prog.programName}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    {prog.isActive && (
+                      <span className="zone-badge" style={{ color: 'var(--color-brand)', backgroundColor: 'rgba(62,207,142,0.1)' }}>● ACTIVE</span>
+                    )}
+                    <span className="text-mono" style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>{prog.sessionsCompleted} sessions</span>
+                  </div>
                 </div>
                 {prog.startDate && (
                   <div className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
                     {new Date(prog.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     {' → '}
                     {prog.endDate ? new Date(prog.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Ongoing'}
-                    {prog.isActive && (
-                      <span style={{ color: 'var(--color-brand)', marginLeft: '8px' }}>● Active</span>
-                    )}
                   </div>
                 )}
               </div>

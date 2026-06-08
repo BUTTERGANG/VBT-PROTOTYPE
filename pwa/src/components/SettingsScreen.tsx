@@ -1,11 +1,6 @@
-// src/components/SettingsScreen.tsx
-
 import { useState } from 'react';
 import { useLiftStore } from '../store/liftStore';
 
-/**
- * Settings screen — athlete defaults, zone config, camera preferences.
- */
 export function SettingsScreen() {
   const { zoneConfig, setZoneConfig, visionSettings, updateVisionSettings } = useLiftStore();
 
@@ -13,163 +8,146 @@ export function SettingsScreen() {
   const [tolerance, setTolerance] = useState(String(zoneConfig.tolerance));
   const [plateDiam, setPlateDiam] = useState(String(visionSettings.plateDiameterMm));
   const [recordingEnabled, setRecordingEnabled] = useState(visionSettings.recordingEnabled);
+  const [zoneSaved, setZoneSaved] = useState(false);
+  const [cameraSaved, setCameraSaved] = useState(false);
+  const [zoneError, setZoneError] = useState('');
 
   const handleSaveZone = () => {
     const tv = parseFloat(targetVel);
     const tol = parseFloat(tolerance);
-    if (tv > 0 && tol > 0) {
-      setZoneConfig({ targetVelocity: tv, tolerance: tol });
+    if (!tv || tv <= 0 || !tol || tol <= 0) {
+      setZoneError('Both values must be greater than 0');
+      return;
     }
+    setZoneError('');
+    setZoneConfig({ targetVelocity: tv, tolerance: tol });
+    setZoneSaved(true);
+    setTimeout(() => setZoneSaved(false), 2000);
   };
 
   const handleSaveCamera = () => {
     const pd = parseFloat(plateDiam);
     if (pd > 0) {
-      updateVisionSettings({
-        plateDiameterMm: pd,
-        recordingEnabled,
-      });
+      updateVisionSettings({ plateDiameterMm: pd, recordingEnabled });
+      setCameraSaved(true);
+      setTimeout(() => setCameraSaved(false), 2000);
     }
   };
 
   return (
     <div className="screen-container" style={{ paddingBottom: '80px' }}>
-      <div style={{ paddingTop: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-        <h2 className="text-heading" style={{ color: 'var(--color-text-primary)', margin: 0 }}>
-          Settings
-        </h2>
+      <div className="page-header">
+        <h2 className="text-heading page-title">Settings</h2>
       </div>
 
-      {/* Zone defaults */}
+      {/* Default velocity zone */}
       <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
+        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', fontSize: '11px' }}>
           DEFAULT VELOCITY ZONE
         </div>
-        <div className="flex gap-3" style={{ marginBottom: 'var(--space-3)' }}>
-          <div style={{ flex: 1 }}>
-            <label className="text-caption" style={{ color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>
-              Target (m/s)
-            </label>
+
+        <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '120px' }}>
+            <label className="app-label">Target (m/s)</label>
             <input
-              type="number"
-              step="0.01"
-              value={targetVel}
-              onChange={(e) => setTargetVel(e.target.value)}
-              style={{
-                width: '100%',
-                padding: 'var(--space-3)',
-                backgroundColor: 'var(--color-bg)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-sm)',
-                color: 'var(--color-text-primary)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '14px',
-                outline: 'none',
-              }}
+              type="number" step="0.01" value={targetVel}
+              onChange={(e) => { setTargetVel(e.target.value); setZoneError(''); }}
+              className="app-input mono"
             />
           </div>
-          <div style={{ flex: 1 }}>
-            <label className="text-caption" style={{ color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>
-              Tolerance (±m/s)
-            </label>
+          <div style={{ flex: 1, minWidth: '120px' }}>
+            <label className="app-label">Tolerance (±m/s)</label>
             <input
-              type="number"
-              step="0.01"
-              value={tolerance}
-              onChange={(e) => setTolerance(e.target.value)}
-              style={{
-                width: '100%',
-                padding: 'var(--space-3)',
-                backgroundColor: 'var(--color-bg)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-sm)',
-                color: 'var(--color-text-primary)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '14px',
-                outline: 'none',
-              }}
+              type="number" step="0.01" value={tolerance}
+              onChange={(e) => { setTolerance(e.target.value); setZoneError(''); }}
+              className="app-input mono"
             />
           </div>
         </div>
-        <button
-          onClick={handleSaveZone}
-          className="btn btn-pill btn-brand"
-          style={{ width: '100%', padding: 'var(--space-2)', fontSize: '12px' }}
-        >
-          Save Zone Defaults
-        </button>
-        <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
-          Current: {zoneConfig.targetVelocity.toFixed(2)} ± {zoneConfig.tolerance.toFixed(2)} m/s
+
+        {zoneError && (
+          <div className="text-caption" style={{ color: 'var(--color-danger)', marginBottom: 'var(--space-2)' }}>
+            {zoneError}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+          <div className="text-caption" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+            Current: {zoneConfig.targetVelocity.toFixed(2)} ± {zoneConfig.tolerance.toFixed(2)} m/s
+          </div>
+          <button
+            onClick={handleSaveZone}
+            className="btn btn-pill btn-brand"
+            style={{ padding: 'var(--space-2) var(--space-5)', fontSize: '13px' }}
+          >
+            {zoneSaved ? '✓ Saved' : 'Save Zone'}
+          </button>
         </div>
       </div>
 
       {/* Camera settings */}
       <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
-          CAMERA
-        </div>
-        <div style={{ marginBottom: 'var(--space-3)' }}>
-          <label className="text-caption" style={{ color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>
-            Plate Diameter (mm)
-          </label>
+        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', fontSize: '11px' }}>CAMERA</div>
+
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <label className="app-label">Plate Diameter (mm)</label>
           <input
-            type="number"
-            step="10"
-            value={plateDiam}
+            type="number" step="10" value={plateDiam}
             onChange={(e) => setPlateDiam(e.target.value)}
-            style={{
-              width: '100%',
-              padding: 'var(--space-3)',
-              backgroundColor: 'var(--color-bg)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--color-text-primary)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '14px',
-              outline: 'none',
-            }}
+            className="app-input mono"
           />
           <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
-            Used for scale calibration. Standard: 450mm (full-size plate)
+            Used for scale calibration. Standard Olympic plate: 450mm
           </div>
         </div>
 
-        <div style={{ marginBottom: 'var(--space-3)' }}>
-          <label className="flex items-center gap-3" style={{ cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={recordingEnabled}
-              onChange={(e) => setRecordingEnabled(e.target.checked)}
-              style={{ width: '16px', height: '16px' }}
-            />
-            <span className="text-body-sm" style={{ color: 'var(--color-text-primary)' }}>
-              Record video during sets
+        {/* Custom toggle */}
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <label className="toggle-row" onClick={() => setRecordingEnabled(v => !v)}>
+            <span className="toggle">
+              <input
+                type="checkbox"
+                checked={recordingEnabled}
+                onChange={(e) => setRecordingEnabled(e.target.checked)}
+              />
+              <div className="toggle-track" />
+              <div className="toggle-thumb" />
             </span>
+            <div>
+              <div className="text-body-sm" style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
+                Record video during sets
+              </div>
+              <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                Saves video for post-set review with bar path overlay
+              </div>
+            </div>
           </label>
-          <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-1)', marginLeft: '28px' }}>
-            Saves video for post-set review with bar path overlay
-          </div>
         </div>
 
-        <button
-          onClick={handleSaveCamera}
-          className="btn btn-pill btn-brand"
-          style={{ width: '100%', padding: 'var(--space-2)', fontSize: '12px' }}
-        >
-          Save Camera Settings
-        </button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={handleSaveCamera}
+            className="btn btn-pill btn-brand"
+            style={{ padding: 'var(--space-2) var(--space-5)', fontSize: '13px' }}
+          >
+            {cameraSaved ? '✓ Saved' : 'Save Camera'}
+          </button>
+        </div>
       </div>
 
-      {/* Info */}
+      {/* About */}
       <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
-          ABOUT
-        </div>
-        <div className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
-          VBT Tracker v1.0 — Camera-first velocity based training
-        </div>
-        <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginTop: '2px' }}>
-          Markerless detection via MediaPipe pose + barbell contour analysis
+        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontSize: '11px' }}>ABOUT</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="text-body-sm" style={{ color: 'var(--color-text-muted)' }}>Version</span>
+            <span className="text-mono" style={{ color: 'var(--color-text-primary)', fontSize: '12px' }}>1.0.0</span>
+          </div>
+          <div style={{ borderTop: '1px solid var(--color-border-subtle)', paddingTop: 'var(--space-2)' }}>
+            <span className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
+              Camera-first velocity based training. Markerless detection via MediaPipe pose + barbell contour analysis. No hardware required.
+            </span>
+          </div>
         </div>
       </div>
     </div>

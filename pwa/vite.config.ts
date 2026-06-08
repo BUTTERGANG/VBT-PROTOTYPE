@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  base: './',  // relative paths so PWA works on any Replit URL
+  base: '/',
   server: {
     host: '0.0.0.0',      // bind to all interfaces so Replit webview can reach it
     port: 5173,

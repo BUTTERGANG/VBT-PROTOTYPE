@@ -15,12 +15,14 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { SyncIndicator } from './components/SyncIndicator';
 import { OnboardingScreen } from './components/OnboardingScreen';
 import { VideoLibraryScreen } from './components/VideoLibraryScreen';
+import { HomeScreen } from './components/HomeScreen';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import type { Rep } from './types';
 
 // ─── Tab definitions ────────────────────────────────────────────────────
 
 const TABS: { path: string; label: string; icon: string }[] = [
+  { path: '/', label: 'HOME', icon: 'home' },
   { path: '/camera', label: 'CAMERA', icon: 'camera' },
   { path: '/workout', label: 'WORKOUT', icon: 'dumbbell' },
   { path: '/history', label: 'HISTORY', icon: 'list' },
@@ -41,6 +43,7 @@ const SIDEBAR_WIDTH = 200;
 function TabIcon({ type, active }: { type: string; active: boolean }) {
   const color = active ? 'var(--color-text-primary)' : 'var(--color-text-muted)';
   const icons: Record<string, ReactNode> = {
+    home: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
     bolt: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>,
     dumbbell: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 6.5h11M6 12h12M6.5 17.5h11" /><circle cx="4" cy="6.5" r="2" /><circle cx="20" cy="6.5" r="2" /><circle cx="4" cy="17.5" r="2" /><circle cx="20" cy="17.5" r="2" /></svg>,
     list: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></svg>,
@@ -148,6 +151,8 @@ function AppContent() {
   }
 
   const currentPath = location.pathname;
+  const isTabActive = (path: string) =>
+    path === '/' ? currentPath === '/' : currentPath === path;
 
   return (
     <div style={{ minHeight: '100dvh', backgroundColor: 'var(--color-bg)', display: 'flex' }}>
@@ -161,25 +166,29 @@ function AppContent() {
           </div>
 
           <nav style={{ flex: 1, padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {TABS.map((tab) => (
-              <button
-                key={tab.path}
-                onClick={() => navigate(tab.path)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '10px var(--space-4)', borderRadius: 'var(--radius-md)',
-                  backgroundColor: currentPath === tab.path ? 'var(--color-brand)' : 'transparent',
-                  color: currentPath === tab.path ? '#000' : 'var(--color-text-muted)',
-                  border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)',
-                  fontSize: '14px', fontWeight: currentPath === tab.path ? 600 : 400,
-                  transition: 'background-color 0.15s, color 0.15s', textAlign: 'left', minHeight: '44px',
-                }}
-              >
-                <TabIcon type={tab.icon} active={currentPath === tab.path} />
-                <span style={{ flex: 1 }}>{tab.label}</span>
-                {tab.path === '/history' && <SyncIndicator />}
-              </button>
-            ))}
+            {TABS.map((tab) => {
+              const active = isTabActive(tab.path);
+              return (
+                <button
+                  key={tab.path}
+                  onClick={() => navigate(tab.path)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '10px var(--space-4)', borderRadius: 'var(--radius-md)',
+                    backgroundColor: active ? 'rgba(62,207,142,0.12)' : 'transparent',
+                    color: active ? 'var(--color-brand)' : 'var(--color-text-muted)',
+                    border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                    fontSize: '13px', fontWeight: active ? 600 : 400,
+                    transition: 'background-color 0.15s, color 0.15s', textAlign: 'left', minHeight: '44px',
+                    borderLeft: active ? '2px solid var(--color-brand)' : '2px solid transparent',
+                  }}
+                >
+                  <TabIcon type={tab.icon} active={active} />
+                  <span style={{ flex: 1 }}>{tab.label}</span>
+                  {tab.path === '/history' && <SyncIndicator />}
+                </button>
+              );
+            })}
           </nav>
 
           {isInstallable && !showIOSBanner && (
@@ -219,7 +228,7 @@ function AppContent() {
         <div className="screen-transition" style={{ flex: 1, maxWidth: isDesktop ? '960px' : '100%', width: '100%', margin: '0 auto' }}>
           <Suspense fallback={<CameraLoadingSkeleton />}>
             <Routes>
-              <Route path="/" element={<Navigate to="/history" replace />} />
+              <Route path="/" element={<HomeScreen />} />
               <Route path="/live" element={<LiveLiftScreen />} />
               <Route path="/camera" element={<CameraLiveLiftScreen initialInputMode={cameraInputMode} />} />
               <Route path="/summary" element={<PostSetSummaryScreen />} />
@@ -244,7 +253,7 @@ function AppContent() {
               <Route path="/coach" element={<CoachModeScreen />} />
               <Route path="/videos" element={<VideoLibraryScreen />} />
               <Route path="/settings" element={<SettingsScreen />} />
-              <Route path="*" element={<Navigate to="/history" replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </div>
@@ -255,30 +264,36 @@ function AppContent() {
         <div className="fixed bottom-0 left-0 right-0" style={{ backgroundColor: 'var(--color-bg)', borderTop: '1px solid var(--color-border-subtle)', paddingBottom: 'env(safe-area-inset-bottom, 0px)', zIndex: 50 }}>
           <div className="container">
             <div className="flex">
-              {MOBILE_TABS.map((tab) => (
-                <button
-                  key={tab.path}
-                  onClick={() => navigate(tab.path)}
-                  style={{
-                    flex: 1, padding: '10px 0', flexDirection: 'column', gap: '4px',
-                    borderRadius: 0, color: currentPath === tab.path ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                    backgroundColor: 'transparent', cursor: 'pointer', border: 'none',
-                    borderBottomWidth: '2px', borderBottomStyle: 'solid',
-                    borderBottomColor: currentPath === tab.path ? 'var(--color-brand)' : 'transparent',
-                    minHeight: '60px', transition: 'color 0.15s',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'center' }}><TabIcon type={tab.icon} active={currentPath === tab.path} /></div>
-                  <span className="text-mono" style={{ fontSize: '9px' }}>{tab.label}</span>
-                </button>
-              ))}
+              {MOBILE_TABS.map((tab) => {
+                const active = isTabActive(tab.path);
+                return (
+                  <button
+                    key={tab.path}
+                    onClick={() => navigate(tab.path)}
+                    style={{
+                      flex: 1, padding: '10px 0', flexDirection: 'column', gap: '4px',
+                      borderRadius: 0,
+                      color: active ? 'var(--color-brand)' : 'var(--color-text-muted)',
+                      backgroundColor: 'transparent', cursor: 'pointer', border: 'none',
+                      borderBottomWidth: '2px', borderBottomStyle: 'solid',
+                      borderBottomColor: active ? 'var(--color-brand)' : 'transparent',
+                      minHeight: '60px', transition: 'color 0.15s',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'center' }}><TabIcon type={tab.icon} active={active} /></div>
+                    <span className="text-mono" style={{ fontSize: '9px' }}>{tab.label}</span>
+                  </button>
+                );
+              })}
               {/* Settings gear */}
               <button
                 onClick={() => navigate('/settings')}
                 style={{
                   width: '44px', padding: '10px 0', flexDirection: 'column', gap: '4px',
-                  borderRadius: 0, color: currentPath === '/settings' ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                  borderRadius: 0,
+                  color: currentPath === '/settings' ? 'var(--color-brand)' : 'var(--color-text-muted)',
                   backgroundColor: 'transparent', cursor: 'pointer', border: 'none', minHeight: '60px',
+                  borderBottom: currentPath === '/settings' ? '2px solid var(--color-brand)' : '2px solid transparent',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'center' }}><TabIcon type="gear" active={currentPath === '/settings'} /></div>

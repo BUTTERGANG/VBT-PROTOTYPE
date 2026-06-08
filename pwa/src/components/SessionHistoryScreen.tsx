@@ -1,5 +1,3 @@
-// src/components/SessionHistoryScreen.tsx
-
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api/client';
 import { localCache } from '../services/storage/LocalCache';
@@ -11,9 +9,9 @@ interface SessionHistoryScreenProps {
 }
 
 const ZONE_COLORS: Record<string, string> = {
-  FAST: '#ef4444',
-  IN_RANGE: '#10b981',
-  SLOW: '#6b7280',
+  FAST: 'var(--zone-fast)',
+  IN_RANGE: 'var(--zone-in-range)',
+  SLOW: 'var(--zone-slow)',
 };
 
 export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHistoryScreenProps) {
@@ -43,7 +41,6 @@ export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHist
     } catch (err) {
       console.warn('API unavailable, falling back to local cache:', err);
       setOffline(true);
-      // Fall back to LocalCache
       try {
         const cached = await localCache.getSessionHistory(LIMIT);
         const mapped = cached.map(s => ({
@@ -89,47 +86,36 @@ export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHist
     <div className="screen-container" style={{ paddingBottom: '80px' }}>
       {/* Offline banner */}
       {offline && (
-        <div style={{
-          padding: 'var(--space-2) var(--space-4)',
-          backgroundColor: 'rgba(245,158,11,0.1)',
-          borderBottom: '1px solid rgba(245,158,11,0.2)',
-          fontSize: '11px',
-          fontFamily: 'var(--font-mono)',
-          color: '#f59e0b',
-          textAlign: 'center',
-        }}>
-          ⚡ Offline — showing local data
+        <div className="offline-banner">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Offline — showing cached data
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex gap-2" style={{ marginBottom: 'var(--space-4)', paddingTop: 'var(--space-2)' }}>
+      <div style={{ marginBottom: 'var(--space-4)', paddingTop: 'var(--space-2)' }}>
         <input
           type="text"
-          placeholder="Filter exercise..."
+          placeholder="Filter by exercise…"
           value={exerciseFilter}
           onChange={(e) => setExerciseFilter(e.target.value)}
-          className="flex-1"
-          style={{
-            padding: 'var(--space-3)',
-            backgroundColor: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-sm)',
-            color: 'var(--color-text-primary)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: '13px',
-            outline: 'none',
-          }}
+          className="app-input"
+          style={{ fontSize: '14px' }}
         />
       </div>
 
       {/* Session list */}
       {sessions.length === 0 && !loading ? (
         <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
-          <div style={{ fontSize: '32px', marginBottom: 'var(--space-3)' }}>📋</div>
+          <div style={{ marginBottom: 'var(--space-3)', opacity: 0.4 }}>
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+          </div>
           <div className="text-body" style={{ color: 'var(--color-text-muted)' }}>No sessions yet</div>
           <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-2)' }}>
-            Sessions completed on-device will appear here
+            Completed sessions will appear here
           </div>
         </div>
       ) : (
@@ -138,40 +124,26 @@ export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHist
             <button
               key={session.id}
               onClick={() => onSelectSession?.(session.id)}
-              className="card text-left"
-              style={{
-                cursor: 'pointer',
-                padding: 'var(--space-4)',
-                border: '1px solid var(--color-border)',
-                background: 'var(--color-surface)',
-                transition: 'border-color 0.15s',
-              }}
+              className="session-card"
             >
-              <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-2)' }}>
-                <div className="text-subheading" style={{ color: 'var(--color-text-primary)', margin: 0 }}>
+              {/* Title row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                <div className="text-body" style={{ color: 'var(--color-text-primary)', fontWeight: 600, margin: 0 }}>
                   {session.exercise}
                 </div>
                 {session.fatigue_flag && (
-                  <span
-                    className="text-caption"
-                    style={{
-                      color: '#ef4444',
-                      backgroundColor: 'rgba(239,68,68,0.1)',
-                      padding: '2px 8px',
-                      borderRadius: '999px',
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                  >
+                  <span className="zone-badge" style={{ color: 'var(--color-danger)', backgroundColor: 'rgba(239,68,68,0.1)' }}>
                     ⚠ FATIGUE
                   </span>
                 )}
               </div>
 
-              <div className="flex items-center gap-3" style={{ marginBottom: 'var(--space-3)' }}>
+              {/* Date/time + athlete */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
                 <span className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
                   {formatDate(session.startTime || session.start_time)}
                 </span>
-                <span className="text-caption" style={{ color: 'var(--color-text-muted)' }}>
+                <span className="text-caption" style={{ color: 'var(--color-text-faint)' }}>
                   {formatTime(session.startTime || session.start_time)}
                 </span>
                 {session.athlete_name && (
@@ -182,35 +154,31 @@ export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHist
               </div>
 
               {/* Quick stats */}
-              <div className="flex gap-4">
+              <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
                 <div>
-                  <span className="text-mono" style={{ color: 'var(--color-brand)', fontSize: '16px' }}>
+                  <span className="text-mono" style={{ color: 'var(--color-brand)', fontSize: '18px', fontWeight: 700 }}>
                     {session.totalReps || session.total_reps || 0}
                   </span>
-                  <span className="text-caption" style={{ color: 'var(--color-text-muted)', marginLeft: '4px' }}>
-                    reps
-                  </span>
+                  <span className="text-caption" style={{ color: 'var(--color-text-muted)', marginLeft: '4px' }}>reps</span>
                 </div>
                 <div>
-                  <span className="text-mono" style={{ color: 'var(--color-text-primary)', fontSize: '16px' }}>
+                  <span className="text-mono" style={{ color: 'var(--color-text-primary)', fontSize: '18px', fontWeight: 600 }}>
                     {(session.avgVelocity || session.avg_velocity || 0).toFixed(2)}
                   </span>
-                  <span className="text-caption" style={{ color: 'var(--color-text-muted)', marginLeft: '4px' }}>
-                    m/s avg
-                  </span>
+                  <span className="text-caption" style={{ color: 'var(--color-text-muted)', marginLeft: '4px' }}>m/s avg</span>
                 </div>
               </div>
 
-              {/* Zone mini-bar */}
+              {/* Zone mini-bar — taller and more readable */}
               {session.sets && session.sets.length > 0 && (
-                <div className="flex gap-1" style={{ marginTop: 'var(--space-3)', height: '4px', borderRadius: '2px', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', gap: '2px', marginTop: 'var(--space-3)', height: '8px', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
                   {session.sets.map((set: any, i: number) =>
                     set.reps?.map((rep: any, j: number) => (
                       <div
                         key={`${i}-${j}`}
                         style={{
                           flex: 1,
-                          backgroundColor: ZONE_COLORS[rep.zone_result] || '#6b7280',
+                          backgroundColor: ZONE_COLORS[rep.zone_result] || 'var(--zone-slow)',
                           borderRadius: '1px',
                         }}
                       />
@@ -235,8 +203,10 @@ export function SessionHistoryScreen({ athleteId, onSelectSession }: SessionHist
       )}
 
       {loading && (
-        <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-text-muted)' }}>
-          <span className="text-caption">Loading sessions...</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+          {[1, 2, 3].map(i => (
+            <div key={i} className="skeleton" style={{ height: '110px', borderRadius: 'var(--radius-xl)' }} />
+          ))}
         </div>
       )}
     </div>
