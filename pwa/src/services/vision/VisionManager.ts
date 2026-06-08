@@ -116,6 +116,10 @@ export class VisionManager {
     return { ...this.calibration };
   }
 
+  updateConfig(partial: Partial<VisionConfig>): void {
+    this.config = { ...this.config, ...partial };
+  }
+
   getVideoElement(): HTMLVideoElement | null {
     return this.video;
   }
@@ -256,14 +260,28 @@ export class VisionManager {
       throw this.makeError('camera-unavailable', 'getUserMedia not supported');
     }
 
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: this.config.facingMode,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-      audio: false,
-    });
+    const baseConstraints = { width: { ideal: 1280 }, height: { ideal: 720 } };
+
+    if (this.config.deviceId) {
+      // Specific camera selected by the user (works on desktop + mobile)
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: this.config.deviceId }, ...baseConstraints },
+        audio: false,
+      });
+    } else {
+      // Try rear camera (mobile), fall back to any available camera (desktop)
+      try {
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: this.config.facingMode, ...baseConstraints },
+          audio: false,
+        });
+      } catch {
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          video: baseConstraints,
+          audio: false,
+        });
+      }
+    }
 
     if (!this.video) throw this.makeError('camera-unavailable', 'Video element not set');
 

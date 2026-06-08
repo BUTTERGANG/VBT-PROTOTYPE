@@ -84,6 +84,16 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
   const prevZone = useRef<ZoneResult | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [barPath, setBarPath] = useState<BarPosition[]>([]);
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+
+  // Enumerate available cameras on mount
+  useEffect(() => {
+    navigator.mediaDevices?.enumerateDevices().then((devices) => {
+      const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+      setCameras(videoInputs);
+    }).catch(() => {});
+  }, []);
 
   // Derived values
   const modeConfig = getLiftingModeConfig(liftingMode);
@@ -113,6 +123,11 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
         plateDiameterMm: visionSettings.plateDiameterMm,
         movementThreshold: exerciseConfig.minRepDisplacement / 20,
         targetFps: getRecommendedFps(),
+      });
+      // Apply current camera selection and plate config (handles re-init after settings change)
+      vm.updateConfig({
+        deviceId: selectedCameraId || undefined,
+        plateDiameterMm: visionSettings.plateDiameterMm,
       });
       visionRef.current = vm;
 
@@ -531,6 +546,27 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
           <div className="text-subheading" style={{ color: 'var(--color-text-primary)', marginBottom: 'var(--space-3)' }}>
             3. Settings
           </div>
+
+          {/* Camera selector — shown when multiple cameras or labels are available */}
+          {cameras.length > 0 && (
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <label className="text-caption" style={{ color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>
+                Camera
+              </label>
+              <select
+                value={selectedCameraId}
+                onChange={(e) => setSelectedCameraId(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">Default camera</option>
+                {cameras.map((cam, i) => (
+                  <option key={cam.deviceId} value={cam.deviceId}>
+                    {cam.label || `Camera ${i + 1}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <label className="text-caption" style={{ color: 'var(--color-text-muted)', display: 'block', marginBottom: 'var(--space-1)' }}>
