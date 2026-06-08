@@ -1,6 +1,6 @@
 ---
 title: "Backend JWT Auth System"
-status: backlog
+status: sprint
 priority: P0
 project: VBT-PROTOTYPE
 type: dev
