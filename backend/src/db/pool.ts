@@ -3,10 +3,7 @@
 // Uses @neondatabase/serverless for HTTP-based connections (no TCP pool needed)
 // Docs: https://github.com/neondatabase/serverless
 
-import { neon, neonConfig } from '@neondatabase/serverless';
-
-// Enable connection caching for better performance in serverless environments
-neonConfig.fetchConnectionCache = true;
+import { neon } from '@neondatabase/serverless';
 
 // Accept either DATABASE_URL or NEONDB secret name
 const rawUrl = process.env.NEONDB || process.env.DATABASE_URL || null;
