@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "db:init": "node -e \"const {neon} = require('@neondatabase/serverless'); const fs = require('fs'); const url = process.env.DATABASE_URL; if(!url){console.error('DATABASE_URL not set');process.exit(1)} const sql = neon(url + (url.includes('sslmode=') ? '' : (url.includes('?') ? '&' : '?') + 'sslmode=require')); const ddl = fs.readFileSync('src/db/schema.sql','utf8'); (async()=>{for(const s of ddl.split(';').filter(x=>x.trim())){await sql(s + ';')} console.log('DB initialized')})().catch(e=>{console.error(e);process.exit(1)})\""
+    "db:init": "tsx src/db/init.ts"
   },
   "keywords": [],
   "author": "",
