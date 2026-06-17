@@ -1,0 +1,38 @@
+{
+    "name": "v1-validation",
+    "clips": [
+        {
+            "clip_id": "squat_001",
+            "video_path": "data/videos/squat_001.mp4",
+            "exercise": "Back Squat",
+            "load_kg": 100,
+            "encoder_mean_velocity": 0.45,
+            "encoder_peak_velocity": 0.72,
+            "camera_distance_m": 2.5,
+            "camera_angle": "side",
+            "lighting": "good"
+        },
+        {
+            "clip_id": "squat_002",
+            "video_path": "data/videos/squat_002.mp4",
+            "exercise": "Back Squat",
+            "load_kg": 120,
+            "encoder_mean_velocity": 0.38,
+            "encoder_peak_velocity": 0.61,
+            "camera_distance_m": 2.5,
+            "camera_angle": "side",
+            "lighting": "good"
+        },
+        {
+            "clip_id": "bench_001",
+            "video_path": "data/videos/bench_001.mp4",
+            "exercise": "Bench Press",
+            "load_kg": 80,
+            "encoder_mean_velocity": 0.35,
+            "encoder_peak_velocity": 0.55,
+            "camera_distance_m": 2.0,
+            "camera_angle": "side",
+            "lighting": "dim"
+        }
+    ]
+}
