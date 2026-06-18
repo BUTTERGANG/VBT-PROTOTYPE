@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useLiftStore } from '../store/liftStore';
+import { useAuthStore } from '../store/authStore';
 
 export function SettingsScreen() {
   const { zoneConfig, setZoneConfig, visionSettings, updateVisionSettings } = useLiftStore();
+  const { user, logout } = useAuthStore();
 
   const [targetVel, setTargetVel] = useState(String(zoneConfig.targetVelocity));
   const [tolerance, setTolerance] = useState(String(zoneConfig.tolerance));
@@ -131,6 +133,24 @@ export function SettingsScreen() {
             style={{ padding: 'var(--space-2) var(--space-5)', fontSize: '13px' }}
           >
             {cameraSaved ? '✓ Saved' : 'Save Camera'}
+          </button>
+        </div>
+      </div>
+
+      {/* Account */}
+      <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
+        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontSize: '11px' }}>ACCOUNT</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+          <div>
+            <div className="text-body-sm" style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{user?.email}</div>
+            <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginTop: '2px' }}>Signed in</div>
+          </div>
+          <button
+            onClick={logout}
+            className="btn btn-pill"
+            style={{ padding: 'var(--space-2) var(--space-5)', fontSize: '13px', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }}
+          >
+            Sign Out
           </button>
         </div>
       </div>

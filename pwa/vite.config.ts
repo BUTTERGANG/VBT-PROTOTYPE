@@ -20,6 +20,13 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      // selfDestroying: ships a service worker that UNREGISTERS itself and
+      // wipes all precaches on load. This clears any stale bundle a previous
+      // SW cached in the browser. Keep this ON while iterating on the vision
+      // pipeline so every rebuild is picked up immediately (a normal refresh
+      // does NOT bypass a service worker). To restore offline/PWA-install
+      // support once the analyzer is stable, set this back to false.
+      selfDestroying: true,
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {

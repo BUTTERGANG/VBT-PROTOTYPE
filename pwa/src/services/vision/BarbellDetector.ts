@@ -154,12 +154,25 @@ export class BarbellDetector {
  * 5. Fit bounding boxes to contours
  * 6. Score each contour as a likely plate rim based on:
  *    - Aspect ratio (should be roughly elliptical: 0.4 - 1.0)
- *    - Size relative to frame (plates are a significant feature)
+ *    - Size relative to frame (plates must be 5-45% of frame width)
  *    - Circularity measure (perimeter² / 4π_area ≈ 1 for circles)
  *    - Position (plates are usually in the lower 2/3 of the frame)
+ * 7. Spatial continuity: large jumps from the last accepted position
+ *    require much higher confidence to accept, preventing the tracker
+ *    from hopping between unrelated circular objects frame-to-frame.
  */
 class ContourPlateDetector {
   private minConfidence: number;
+
+  // Spatial continuity: track last accepted position so we can reject
+  // detections that jump to a different object.
+  private lastCenterX: number | null = null;
+  private lastCenterY: number | null = null;
+
+  // A plate moving at 1.5 m/s at 30 fps travels ~50mm per frame.
+  // At 0.5 px/mm that's ~25px.  5% of 1920px = 96px gives ~4× headroom for
+  // calibration error while reliably rejecting cross-object jumps (100–300px).
+  private readonly MAX_JUMP_FRACTION = 0.05;
 
   constructor(minConfidence: number) {
     this.minConfidence = minConfidence;
@@ -196,7 +209,6 @@ class ContourPlateDetector {
     let bestScore = 0;
 
     for (const contour of contours) {
-      // Skip tiny contours (noise) and huge ones (background)
       const area = contour.pixelCount;
       if (area < 200 || area > (w * h * 0.3)) continue;
 
@@ -208,26 +220,36 @@ class ContourPlateDetector {
 
       // Aspect ratio score -- plates are roughly circular/elliptical
       const aspectRatio = Math.min(bw, bh) / Math.max(bw, bh);
-      if (aspectRatio < 0.3) continue; // Too elongated
+      if (aspectRatio < 0.3) continue;
       const aspectScore = aspectRatio;
 
       // Circularity score -- how close to a circle/ellipse
-      // perimeter² / (4π × area) ≈ 1 for a perfect circle
       const perimeter = contour.perimeter;
       const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
-      const circScore = Math.min(circularity, 1); // Cap at 1
+      const circScore = Math.min(circularity, 1);
 
-      // Size score -- plates should be a notable feature
-      // Ideal: 5-25% of frame width
+      // Size score -- plates MUST be a significant fraction of the frame.
+      // Anything smaller than 3% of frame width is almost certainly not a
+      // barbell plate; score it zero so it can never beat a real detection.
       const sizeRatio = bw / w;
-      const sizeScore = sizeRatio > 0.05 && sizeRatio < 0.4 ? 1 : 0.3;
+      let sizeScore: number;
+      if (sizeRatio < 0.03) {
+        continue; // Hard reject — too small to be a plate
+      } else if (sizeRatio < 0.05) {
+        sizeScore = 0.2; // Marginal size, very low weight
+      } else if (sizeRatio <= 0.45) {
+        sizeScore = 1.0; // Good size range
+      } else {
+        sizeScore = 0.3; // Too close / too large
+      }
 
       // Position score -- plates are usually in the middle-lower area
       const centerY = (bbox.minY + bbox.maxY) / 2;
       const posScore = (centerY / h > 0.2 && centerY / h < 0.9) ? 1 : 0.5;
 
-      // Combined score
-      const score = aspectScore * 0.3 + circScore * 0.3 + sizeScore * 0.2 + posScore * 0.2;
+      // Combined score — size has higher weight because it's the most
+      // discriminating feature separating real plates from small circles.
+      const score = aspectScore * 0.25 + circScore * 0.25 + sizeScore * 0.35 + posScore * 0.15;
 
       if (score > bestScore) {
         bestScore = score;
@@ -242,11 +264,31 @@ class ContourPlateDetector {
       }
     }
 
-    if (bestDetection && bestDetection.confidence < this.minConfidence) {
+    if (!bestDetection || bestDetection.confidence < this.minConfidence) {
       return null;
     }
 
+    // Step 7: Spatial continuity — reject detections that jump too far from
+    // the last accepted position unless confidence is very high.
+    if (this.lastCenterX !== null && this.lastCenterY !== null) {
+      const dx = Math.abs(bestDetection.centerX - this.lastCenterX);
+      const dy = Math.abs(bestDetection.centerY - this.lastCenterY);
+      const maxJump = w * this.MAX_JUMP_FRACTION;
+      if ((dx > maxJump || dy > maxJump) && bestDetection.confidence < 0.75) {
+        // Large jump with low confidence — almost certainly a different object.
+        return null;
+      }
+    }
+
+    this.lastCenterX = bestDetection.centerX;
+    this.lastCenterY = bestDetection.centerY;
+
     return bestDetection;
+  }
+
+  reset(): void {
+    this.lastCenterX = null;
+    this.lastCenterY = null;
   }
 
   // --- Image processing primitives ---

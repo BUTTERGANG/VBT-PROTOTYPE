@@ -1,5 +1,10 @@
 // src/types/index.ts
 
+export interface User {
+  id: string;
+  email: string;
+}
+
 export interface ZoneConfig {
   targetVelocity: number;
   tolerance: number;

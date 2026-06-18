@@ -41,6 +41,7 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
   const [inputMode, setInputMode] = useState<InputMode>(initialInputMode || 'camera-record');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [showFramingGuide, setShowFramingGuide] = useState(false);
 
   // iOS-specific state
@@ -613,23 +614,36 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
                   return;
                 }
                 setUploadError(null);
+                setUploadProgress(0);
                 setPhase('processing');
+                // Hold reference before clearing state
+                const file = uploadFile;
                 try {
                   const { VideoProcessor } = await import('../services/recording/VideoProcessor');
                   const proc = new VideoProcessor();
                   const result = await proc.process(
-                    uploadFile,
+                    file,
                     visionSettings.plateDiameterMm,
-                    (_progress) => { /* could show progress bar */ },
+                    (progress) => { setUploadProgress(Math.round(progress * 100)); },
                     (reading) => { addReading(reading); },
                   );
-                  if (result.readings.length > 0) {
-                    updateVisionSettings({ isCalibrated: result.calibrated });
-                    setRepCount(result.repCount);
-                  } else {
+                  if (result.readings.length === 0) {
                     setUploadError('No barbell detected in video. Try a clip with the bar clearly visible.');
+                    setPhase('setup');
+                    return;
                   }
-                  setPhase('setup');
+                  updateVisionSettings({ isCalibrated: result.calibrated });
+                  // Build review data and navigate — same path as camera stop flow
+                  const videoUrl = URL.createObjectURL(file);
+                  const reviewData = {
+                    exercise: exerciseCategory,
+                    weight,
+                    reps: result.reps,
+                    readings: result.readings,
+                    videoUrl,
+                    barPath: result.positions.map(p => ({ x: p.x, y: p.y })),
+                  };
+                  navigate('/review', { state: { data: reviewData } });
                 } catch (err: any) {
                   setUploadError(err.message || 'Failed to process video');
                   setPhase('setup');
@@ -698,6 +712,7 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
 
   // --- Render: Processing (analyzing) ---
   if (phase === 'processing') {
+    const isUpload = inputMode === 'upload';
     return (
       <div
         className="flex flex-col items-center justify-center"
@@ -708,15 +723,22 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
         }}
       >
         <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)', maxWidth: '500px' }}>
-          <div style={{ fontSize: '48px', marginBottom: 'var(--space-4)' }}>🔍</div>
+          <div style={{ fontSize: '48px', marginBottom: 'var(--space-4)' }}>{isUpload ? '📁' : '🔍'}</div>
           <div className="text-subheading" style={{ color: 'var(--color-text-primary)', marginBottom: 'var(--space-2)' }}>
-            Analyzing Set
+            {isUpload ? 'Analyzing Video' : 'Analyzing Set'}
           </div>
           <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
-            Processing {repCount} reps...
+            {isUpload ? `${uploadProgress}% complete — detecting barbell & calculating velocity...` : `Processing ${repCount} reps...`}
           </div>
           <div style={{ width: '200px', height: '4px', backgroundColor: 'var(--color-border)', borderRadius: '2px', overflow: 'hidden', margin: '0 auto' }}>
-            <div style={{ width: '60%', height: '100%', backgroundColor: 'var(--color-brand)', borderRadius: '2px', animation: 'pulse 1.5s ease-in-out infinite' }} />
+            <div style={{
+              width: isUpload ? `${uploadProgress}%` : '60%',
+              height: '100%',
+              backgroundColor: 'var(--color-brand)',
+              borderRadius: '2px',
+              transition: isUpload ? 'width 0.3s ease' : undefined,
+              animation: isUpload ? undefined : 'pulse 1.5s ease-in-out infinite',
+            }} />
           </div>
         </div>
       </div>
