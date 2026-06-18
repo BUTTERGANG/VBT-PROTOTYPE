@@ -237,6 +237,7 @@ export class VisionManager {
     this.lastFrameTime = performance.now();
     this.repDetector.reset();
     this.velocityCalculator.reset();
+    this.barbellDetector.reset();
     this.processFrame();
   }
 
@@ -360,7 +361,8 @@ export class VisionManager {
       const position = this.velocityCalculator.processDetection(
         barbell.centerX,
         barbell.centerY,
-        analysis.timestamp
+        analysis.timestamp,
+        barbell.confidence
       );
       if (position) {
         this.notifyPosition(position);
@@ -369,6 +371,8 @@ export class VisionManager {
         const rep = this.repDetector.addPosition(position);
         if (rep) {
           this.notifyRep(rep);
+          // Reset peak velocity tracking for next rep
+          this.velocityCalculator.startOfRep();
         }
       }
     }
