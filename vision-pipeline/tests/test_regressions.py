@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from vbt_vision.displacement import handle_out_of_frame
 from vbt_vision.metrics import ccc, compute_metrics
 from vbt_vision.velocity import compute_velocity, extract_concentric_phase

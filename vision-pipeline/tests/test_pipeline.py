@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from vbt_vision.displacement import (
     calibrate_from_plate,
     compute_displacement,

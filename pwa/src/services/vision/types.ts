@@ -29,6 +29,8 @@ export interface FrameAnalysis {
   frameNumber: number;
   barbell: BarbellDetection | null;
   pose: PoseLandmarks | null;
+  /** Which detector produced `barbell` — 'heuristic' = no trained model */
+  detectionMode: 'model' | 'heuristic';
 }
 
 /** Calibration data for converting pixels to real-world units */

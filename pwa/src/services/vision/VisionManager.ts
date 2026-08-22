@@ -116,6 +116,15 @@ export class VisionManager {
     return { ...this.calibration };
   }
 
+  /**
+   * Current barbell-detection mode. 'heuristic' means no trained model was
+   * available — UI should surface a "heuristic mode" indicator because
+   * bar-path accuracy is degraded.
+   */
+  getDetectionMode(): 'model' | 'heuristic' {
+    return this.barbellDetector.isUsingModel() ? 'model' : 'heuristic';
+  }
+
   updateConfig(partial: Partial<VisionConfig>): void {
     this.config = { ...this.config, ...partial };
   }
@@ -341,17 +350,17 @@ export class VisionManager {
     // Draw current video frame to canvas
     this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
 
-    // Run detection and pose estimation in parallel
-    const [barbell, pose] = await Promise.all([
-      this.barbellDetector.detect(this.canvas),
-      this.poseEstimator.estimate(this.video),
-    ]);
+    // Run pose estimation first: in heuristic mode the barbell detector
+    // blends wrist-midpoint position into its output.
+    const pose = await this.poseEstimator.estimate(this.video);
+    const barbell = await this.barbellDetector.detect(this.canvas, pose);
 
     const analysis: FrameAnalysis = {
       timestamp: Date.now(),
       frameNumber: this.frameNumber,
       barbell,
       pose,
+      detectionMode: this.getDetectionMode(),
     };
 
     this.notifyAnalysis(analysis);

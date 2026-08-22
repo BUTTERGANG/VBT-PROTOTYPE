@@ -2,6 +2,9 @@
 
 import * as tf from '@tensorflow/tfjs';
 import type { BarbellDetection } from './types';
+import { blendBarPosition, wristMidpoint, type PoseLandmarks } from './barFallback';
+
+export const MODEL_URL = '/models/barbell-detector/model.json';
 
 /**
  * Detects barbell endcaps in video frames.
@@ -26,6 +29,8 @@ export class BarbellDetector {
   private minConfidence: number;
   private useFallback: boolean = true;
   private fallbackDetector: ContourPlateDetector;
+  /** Set once when the model is found missing — never spam the console */
+  private warnedModelMissing = false;
 
   // Temporal smoothing state
   private smoothedX: number | null = null;
@@ -45,19 +50,43 @@ export class BarbellDetector {
   async initialize(): Promise<void> {
     try {
       await tf.ready();
-      this.model = await tf.loadGraphModel('/models/barbell-detector/model.json');
+      this.model = await tf.loadGraphModel(MODEL_URL);
       this.useFallback = false;
-    } catch {
-      console.warn('[BarbellDetector] TFLite model not found, using contour-based fallback');
+    } catch (err) {
+      // Model absence must be explicit and observable — it silently degrades
+      // bar-path quality, so the UI needs to surface "heuristic mode".
       this.useFallback = true;
+      this.model = null;
+      if (!this.warnedModelMissing) {
+        this.warnedModelMissing = true;
+        console.warn(
+          `[BarbellDetector] Trained barbell model not available at ${MODEL_URL} ` +
+          `(${err instanceof Error ? err.message : 'load failed'}). ` +
+          'Falling back to contour + pose-wrist heuristic detection: expect ' +
+          'reduced accuracy. Deploy the model to pwa/public/models/barbell-detector/ ' +
+          'to enable model mode.',
+        );
+      }
     }
   }
 
-  async detect(canvas: HTMLCanvasElement): Promise<BarbellDetection | null> {
+  /**
+   * Detect the bar position. In heuristic (fallback) mode, `pose` landmarks
+   * are used as a confidence-blended alternative signal: the wrist midpoint
+   * physically tracks the bar in side-view lifts and rescues frames where the
+   * contour detector locks onto the wrong object or misses entirely.
+   */
+  async detect(canvas: HTMLCanvasElement, pose?: PoseLandmarks | null): Promise<BarbellDetection | null> {
     let detection: BarbellDetection | null = null;
 
     if (this.useFallback || !this.model) {
-      detection = this.fallbackDetector.detect(canvas);
+      const contourDetection = this.fallbackDetector.detect(canvas);
+      if (pose) {
+        const hint = wristMidpoint(pose, canvas.width, canvas.height);
+        detection = blendBarPosition(contourDetection, hint);
+      } else {
+        detection = contourDetection;
+      }
     } else {
       detection = await this.detectWithModel(canvas);
     }
