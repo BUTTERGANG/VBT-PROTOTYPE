@@ -30,6 +30,14 @@ def calibrate_from_plate(
 ) -> float:
     """Compute pixels-per-meter from a detected plate.
 
+    Perspective assumption (documented, not corrected): the plate is assumed
+    to lie in the same depth plane as the bar path being measured and the
+    camera is assumed near-perpendicular to that plane (side-view setup).
+    Under those conditions a single px/m factor is valid. If the bar moves
+    significantly toward/away from the camera, scale error grows with the
+    depth change; keep camera_distance_m in the manifest and film from the
+    side to bound this error.
+
     Args:
         plate_diameter_px: detected plate diameter in pixels
         known_diameter_m: real-world plate diameter in meters
@@ -51,6 +59,10 @@ def pixel_to_meters(
     pixels_per_meter: float,
 ) -> np.ndarray:
     """Convert pixel displacement to real-world meters.
+
+    Sign convention: pixel coordinates are image coords, so +y points DOWN.
+    A bar moving upward yields a negative dy; callers measuring lift velocity
+    should negate the vertical component (see scripts/run_validation.py).
 
     Args:
         pixel_displacement: (N, 2) array of (dx, dy) in pixels,
@@ -160,7 +172,6 @@ def handle_out_of_frame(
         good_mask = ~oof_mask
         clean_positions = clean_positions[good_mask]
         clean_confidences = clean_confidences[good_mask]
-        oof_indices = list(np.where(oof_mask)[0])
 
     logger.info(
         f"OOF handling ({strategy.value}): {len(oof_indices)} frames affected"
@@ -189,7 +200,11 @@ def _interpolate_gaps(
 
             gap_length = gap_end - gap_start
 
-            if gap_length <= max_gap and gap_start > 0 and gap_end < n:
+            if (
+                gap_length <= max_gap
+                and gap_start > 0
+                and gap_end < n
+            ):
                 # Interpolate between last good and next good
                 before = positions[gap_start - 1]
                 after = positions[gap_end]
@@ -199,8 +214,11 @@ def _interpolate_gaps(
                     result[gap_start + j] = before + t * (after - before)
                     confidences[gap_start + j] = 0.3  # mark as interpolated
             else:
-                # Gap too large — leave as-is, confidence stays 0
-                pass
+                # Gap too large or touches a boundary: we cannot produce a
+                # trustworthy position here. Zero the confidence so downstream
+                # consumers exclude these frames instead of treating the raw
+                # (unreliable) detection as valid data.
+                confidences[gap_start:gap_end] = 0.0
         else:
             i += 1
 

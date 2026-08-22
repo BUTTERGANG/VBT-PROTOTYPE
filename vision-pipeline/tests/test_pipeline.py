@@ -4,25 +4,20 @@ import numpy as np
 import pytest
 
 from vbt_vision.displacement import (
-    OOFStrategy,
     calibrate_from_plate,
     compute_displacement,
     compute_total_distance,
-    handle_out_of_frame,
     pixel_to_meters,
 )
+from vbt_vision.metrics import (
+    compute_metrics,
+    compute_metrics_per_exercise,
+)
 from vbt_vision.velocity import (
-    VelocityResult,
     compute_velocity,
     detect_pauses,
     extract_concentric_phase,
 )
-from vbt_vision.metrics import (
-    ValidationMetrics,
-    compute_metrics,
-    compute_metrics_per_exercise,
-)
-
 
 # ── Displacement ──
 
@@ -91,8 +86,9 @@ class TestComputeVelocity:
         displacement = timestamps ** 2  # accelerating
 
         result = compute_velocity(displacement, timestamps)
-        # Mean should be between 0 and 1 m/s
-        assert 0 < result.mean_velocity < 1.0
+        # Mean should be between 0 and 1 m/s (== 1.0 exactly is fine:
+        # NaN-safe smoothing no longer biases window edges toward zero)
+        assert 0 < result.mean_velocity <= 1.0
         assert result.peak_velocity > result.mean_velocity
 
     def test_smoothing_reduces_noise(self):

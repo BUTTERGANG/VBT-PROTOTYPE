@@ -5,8 +5,9 @@ Computes RMSE, MAE, bias, Pearson correlation, and per-exercise breakdowns.
 
 from __future__ import annotations
 
-import numpy as np
 from dataclasses import dataclass, field
+
+import numpy as np
 
 
 @dataclass
@@ -21,12 +22,15 @@ class ValidationMetrics:
     mean_encoder: float
     std_vision: float
     std_encoder: float
-    per_exercise: dict[str, "ValidationMetrics"] = field(default_factory=dict)
+    ccc: float = 0.0  # Lin's concordance correlation coefficient
+    per_exercise: dict[str, ValidationMetrics] = field(default_factory=dict)
 
     def summary(self) -> str:
         lines = [
-            f"n={self.n_samples}  RMSE={self.rmse:.4f}  MAE={self.mae:.4f}  "
-            f"bias={self.bias:+.4f}  r={self.pearson_r:.3f}",
+            (
+                f"n={self.n_samples}  RMSE={self.rmse:.4f}  MAE={self.mae:.4f}  "
+                f"bias={self.bias:+.4f}  r={self.pearson_r:.3f}  ccc={self.ccc:.3f}"
+            ),
             f"  vision: {self.mean_vision:.3f} ± {self.std_vision:.3f} m/s",
             f"  encoder: {self.mean_encoder:.3f} ± {self.std_encoder:.3f} m/s",
         ]
@@ -37,6 +41,37 @@ class ValidationMetrics:
                     f"  {ex}: n={m.n_samples} RMSE={m.rmse:.4f} bias={m.bias:+.4f}"
                 )
         return "\n".join(lines)
+
+
+def ccc(vision_velocity: np.ndarray, encoder_velocity: np.ndarray) -> float:
+    """Lin's concordance correlation coefficient.
+
+    Measures both precision (correlation) and accuracy (agreement with the
+    45-degree identity line): CCC = 2*s_xy / (s_x^2 + s_y^2 + (mx - my)^2).
+    1.0 = perfect agreement, unlike Pearson r which ignores systematic bias.
+
+    Args:
+        vision_velocity: (N,) vision-derived velocities in m/s
+        encoder_velocity: (N,) encoder ground truth velocities in m/s
+
+    Returns:
+        CCC in [-1, 1]; 0.0 when undefined (empty, NaN, or zero variance)
+    """
+    vision = np.asarray(vision_velocity, dtype=np.float64)
+    encoder = np.asarray(encoder_velocity, dtype=np.float64)
+    if len(vision) == 0 or len(vision) != len(encoder):
+        return 0.0
+
+    mx = float(np.nanmean(vision))
+    my = float(np.nanmean(encoder))
+    sxx = float(np.nanvar(vision))
+    syy = float(np.nanvar(encoder))
+    sxy = float(np.nanmean((vision - mx) * (encoder - my)))
+
+    denom = sxx + syy + (mx - my) ** 2
+    if denom == 0:
+        return 0.0
+    return float(2.0 * sxy / denom)
 
 
 def compute_metrics(
@@ -88,6 +123,7 @@ def compute_metrics(
         mean_encoder=float(np.mean(encoder)),
         std_vision=float(np.std(vision)),
         std_encoder=float(np.std(encoder)),
+        ccc=ccc(vision, encoder),
     )
 
 

@@ -12,8 +12,6 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import numpy as np
-
 logger = logging.getLogger(__name__)
 
 
@@ -41,7 +39,7 @@ class ValidationDataset:
 
     @property
     def exercises(self) -> list[str]:
-        return sorted(set(c.exercise for c in self.clips))
+        return sorted({c.exercise for c in self.clips})
 
     def filter_by_exercise(self, exercise: str) -> list[LabeledClip]:
         return [c for c in self.clips if c.exercise == exercise]

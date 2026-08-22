@@ -6,8 +6,9 @@ for VBT-specific velocity metrics.
 
 from __future__ import annotations
 
-import numpy as np
 from dataclasses import dataclass, field
+
+import numpy as np
 
 
 @dataclass
@@ -68,11 +69,10 @@ def compute_velocity(
     # Backward difference for last point
     velocity[-1] = (displacement_m[-1] - displacement_m[-2]) / dt[-1]
 
-    # Apply smoothing
+    # Apply smoothing (NaN-aware: a NaN from dt==0 must not smear across
+    # the whole window via convolution)
     if smoothing_window > 1:
-        kernel = np.ones(smoothing_window) / smoothing_window
-        # Use 'same' mode, but handle edges carefully
-        velocity = np.convolve(velocity, kernel, mode="same")
+        velocity = _smooth_nan_safe(velocity, smoothing_window)
 
     # Detect pauses
     pause_frames = detect_pauses(velocity, displacement_m, timestamps_s)
@@ -93,6 +93,21 @@ def compute_velocity(
         pause_frames=pause_frames,
         displacement_m=displacement_m,
     )
+
+
+def _smooth_nan_safe(velocity: np.ndarray, window: int) -> np.ndarray:
+    """Moving-average smoothing that ignores NaN samples instead of
+    propagating them to every neighbor within the window."""
+    valid = np.isfinite(velocity)
+    filled = np.where(valid, velocity, 0.0)
+    kernel = np.ones(window) / window
+    sums = np.convolve(filled, kernel, mode="same")
+    counts = np.convolve(valid.astype(np.float64), kernel, mode="same")
+    with np.errstate(invalid="ignore", divide="ignore"):
+        smoothed = np.where(counts > 0, sums / counts, np.nan)
+    # Original NaN positions stay NaN (no invented data), but their finite
+    # neighbors are smoothed over the valid samples only.
+    return smoothed
 
 
 def detect_pauses(
@@ -146,48 +161,65 @@ def extract_concentric_phase(
     displacement_m: np.ndarray,
     timestamps_s: np.ndarray,
     velocity_threshold: float = 0.02,
+    max_gap_samples: int = 2,
 ) -> tuple[int, int]:
     """Find the start and end indices of the concentric (lifting) phase.
 
     The concentric phase is identified as the period of continuous
-    upward movement (positive displacement derivative).
+    upward movement (positive displacement derivative). Single-sample
+    noise dips below the threshold do not split the phase: segments
+    separated by at most ``max_gap_samples`` sub-threshold samples are
+    merged.
 
     Args:
         displacement_m: (N,) displacement in meters
         timestamps_s: (N,) timestamps in seconds
         velocity_threshold: minimum velocity to count as "moving"
+        max_gap_samples: max consecutive sub-threshold samples to bridge
 
     Returns:
-        (start_idx, end_idx) of the concentric phase
+        (start_idx, end_idx) of the concentric phase, inclusive.
+        (-1, -1) if no sustained upward movement is found (callers must
+        check — previously this fabricated a 2-sample phase).
     """
     if len(displacement_m) < 2:
-        return (0, len(displacement_m) - 1)
+        return (-1, -1)
 
     dt = np.diff(timestamps_s)
     dt = np.where(dt == 0, np.nan, dt)
     vel = np.diff(displacement_m) / dt
 
-    # Find longest continuous positive-velocity segment
     is_positive = vel > velocity_threshold
 
-    best_start = 0
-    best_length = 0
-    current_start = 0
-    current_length = 0
-
-    for i in range(len(is_positive)):
+    # Collect positive segments, merging those separated by small gaps
+    segments: list[tuple[int, int]] = []  # [start_idx, end_idx] inclusive, over vel indices
+    i = 0
+    n = len(is_positive)
+    while i < n:
         if is_positive[i]:
-            if current_length == 0:
-                current_start = i
-            current_length += 1
+            start = i
+            gap = 0
+            end = i
+            j = i + 1
+            while j < n:
+                if is_positive[j]:
+                    end = j
+                    gap = 0
+                else:
+                    gap += 1
+                    if gap > max_gap_samples:
+                        break
+                j += 1
+            segments.append((start, end))
+            i = end + gap + 1 if gap else j
         else:
-            if current_length > best_length:
-                best_length = current_length
-                best_start = current_start
-            current_length = 0
+            i += 1
 
-    if current_length > best_length:
-        best_length = current_length
-        best_start = current_start
+    if not segments:
+        return (-1, -1)
 
-    return (best_start, min(best_start + best_length + 1, len(displacement_m) - 1))
+    best_start, best_end = max(segments, key=lambda s: s[1] - s[0])
+
+    # Convert velocity-segment indices to sample indices:
+    # vel[k] is the displacement change between samples k and k+1.
+    return (best_start, min(best_end + 1, len(displacement_m) - 1))

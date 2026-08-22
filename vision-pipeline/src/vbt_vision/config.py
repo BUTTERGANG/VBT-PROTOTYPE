@@ -5,8 +5,7 @@ All tunable constants live here. Change one value, not ten files.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 
 
 @dataclass
