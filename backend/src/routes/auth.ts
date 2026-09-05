@@ -21,13 +21,16 @@ router.post('/register', async (req: Request, res: Response) => {
 
   const hash = await bcrypt.hash(password, 12);
   const id = uuidv4();
+  const normalizedEmail = email.toLowerCase().trim();
+  // Generate token before insert — if JWT_SECRET is missing we fail fast
+  // without leaving an orphaned user row in the database.
+  const token = signToken(id, normalizedEmail);
   try {
     await sql`
       INSERT INTO users (id, email, password_hash)
-      VALUES (${id}, ${email.toLowerCase().trim()}, ${hash})
+      VALUES (${id}, ${normalizedEmail}, ${hash})
     `;
-    const token = signToken(id, email.toLowerCase().trim());
-    return res.status(201).json({ token, user: { id, email: email.toLowerCase().trim() } });
+    return res.status(201).json({ token, user: { id, email: normalizedEmail } });
   } catch (err: any) {
     if (err.message?.includes('unique') || err.message?.includes('duplicate')) {
       return res.status(409).json({ error: 'Email already registered' });

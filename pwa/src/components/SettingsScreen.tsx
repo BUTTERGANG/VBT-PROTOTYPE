@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useLiftStore } from '../store/liftStore';
+import { useAuthStore } from '../store/authStore';
 
 export function SettingsScreen() {
   const { zoneConfig, setZoneConfig, visionSettings, updateVisionSettings } = useLiftStore();
+  const { user, logout } = useAuthStore();
 
   const [targetVel, setTargetVel] = useState(String(zoneConfig.targetVelocity));
   const [tolerance, setTolerance] = useState(String(zoneConfig.tolerance));
-  const [plateDiam, setPlateDiam] = useState(String(visionSettings.plateDiameterMm));
+  const [plateDiam, setPlateDiam] = useState(String(visionSettings.plateDiameterMm / 10));
   const [recordingEnabled, setRecordingEnabled] = useState(visionSettings.recordingEnabled);
   const [zoneSaved, setZoneSaved] = useState(false);
   const [cameraSaved, setCameraSaved] = useState(false);
@@ -28,7 +30,7 @@ export function SettingsScreen() {
   const handleSaveCamera = () => {
     const pd = parseFloat(plateDiam);
     if (pd > 0) {
-      updateVisionSettings({ plateDiameterMm: pd, recordingEnabled });
+      updateVisionSettings({ plateDiameterMm: pd * 10, recordingEnabled });
       setCameraSaved(true);
       setTimeout(() => setCameraSaved(false), 2000);
     }
@@ -90,14 +92,14 @@ export function SettingsScreen() {
         <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', fontSize: '11px' }}>CAMERA</div>
 
         <div style={{ marginBottom: 'var(--space-4)' }}>
-          <label className="app-label">Plate Diameter (mm)</label>
+          <label className="app-label">Plate Diameter (cm)</label>
           <input
-            type="number" step="10" value={plateDiam}
+            type="number" step="1" value={plateDiam}
             onChange={(e) => setPlateDiam(e.target.value)}
             className="app-input mono"
           />
           <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
-            Used for scale calibration. Standard Olympic plate: 450mm
+            Used for scale calibration. Standard Olympic plate: 45cm
           </div>
         </div>
 
@@ -131,6 +133,24 @@ export function SettingsScreen() {
             style={{ padding: 'var(--space-2) var(--space-5)', fontSize: '13px' }}
           >
             {cameraSaved ? '✓ Saved' : 'Save Camera'}
+          </button>
+        </div>
+      </div>
+
+      {/* Account */}
+      <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
+        <div className="text-mono" style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)', fontSize: '11px' }}>ACCOUNT</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+          <div>
+            <div className="text-body-sm" style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{user?.email}</div>
+            <div className="text-caption" style={{ color: 'var(--color-text-muted)', marginTop: '2px' }}>Signed in</div>
+          </div>
+          <button
+            onClick={logout}
+            className="btn btn-pill"
+            style={{ padding: 'var(--space-2) var(--space-5)', fontSize: '13px', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }}
+          >
+            Sign Out
           </button>
         </div>
       </div>

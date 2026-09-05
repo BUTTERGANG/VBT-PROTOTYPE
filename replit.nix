@@ -3,6 +3,7 @@
 
 { pkgs }: {
   deps = [
+    pkgs.unpackerr
     pkgs.nodejs_22
     pkgs.nodePackages.typescript
     pkgs.python311

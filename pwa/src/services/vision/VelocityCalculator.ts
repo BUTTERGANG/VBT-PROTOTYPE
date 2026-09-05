@@ -8,18 +8,31 @@ import type { BarPosition } from './types';
  * Pipeline:
  * 1. Accumulate raw positions from BarbellDetector
  * 2. Convert pixel displacement to millimeters using calibration
- * 3. Apply Kalman-like smoothing to reduce jitter
- * 4. Output BarPosition with velocity in m/s
+ * 3. Apply adaptive Kalman-like smoothing to reduce jitter
+ * 4. Output BarPosition with signed velocity in m/s
+ *
+ * Research-backed improvements (2026-06-17):
+ * - Signed velocity: preserves direction (positive = bar moving down in image
+ *   coords = eccentric phase for squat/bench). Renner 2024 showed that using
+ *   absolute velocity inflates noise from horizontal jitter.
+ * - Adaptive Kalman: measurement noise scales with detection confidence.
+ *   Low-confidence detections are smoothed more aggressively.
+ * - Peak velocity tracking: PV is the most robust metric (Grossi 2026:
+ *   PV r=0.91 at 1-RM while MV dropped to ρ=0.65). Track PV per-rep.
  */
 export class VelocityCalculator {
   private positions: Array<{ x: number; y: number; timestamp: number }> = [];
   private pixelsPerMm: number = 0;
   private smoothingWindow: number;
-  private maxPositions: number = 300; // Keep last 10 seconds at 30fps
+  private maxPositions: number = 300;
 
-  // Kalman filter state
+  // Adaptive Kalman filter state
   private kalmanX = { estimate: 0, error: 1, processNoise: 0.01, measurementNoise: 0.1 };
   private kalmanY = { estimate: 0, error: 1, processNoise: 0.01, measurementNoise: 0.1 };
+
+  // Peak velocity tracking (research: PV is most robust metric)
+  private peakVelocity = 0;
+  private repStartFrame = 0;
 
   constructor(smoothingWindow: number = 5) {
     this.smoothingWindow = smoothingWindow;
@@ -34,27 +47,33 @@ export class VelocityCalculator {
 
   /**
    * Process a new detection and calculate velocity.
-   * Returns a BarPosition if velocity could be calculated, null otherwise.
+   * Returns a BarPosition with signed velocity (positive = downward in image).
    */
-  processDetection(x: number, y: number, timestamp: number): BarPosition | null {
-    // Apply Kalman filter to smooth position
-    const smoothX = this.kalmanUpdate(this.kalmanX, x);
-    const smoothY = this.kalmanUpdate(this.kalmanY, y);
+  processDetection(x: number, y: number, timestamp: number, confidence: number = 0.8): BarPosition | null {
+    // Adaptive Kalman: scale measurement noise inversely with confidence
+    // Low confidence → high measurement noise → less trust in new detection
+    const adaptiveMeasurementNoise = 0.1 / Math.max(confidence, 0.1);
+
+    const smoothX = this.kalmanUpdate(this.kalmanX, x, adaptiveMeasurementNoise);
+    const smoothY = this.kalmanUpdate(this.kalmanY, y, adaptiveMeasurementNoise);
 
     this.positions.push({ x: smoothX, y: smoothY, timestamp });
 
-    // Trim old positions
     if (this.positions.length > this.maxPositions) {
       this.positions = this.positions.slice(-this.maxPositions);
     }
 
-    // Need at least 2 positions to calculate velocity
     if (this.positions.length < 2) {
       return { x: smoothX, y: smoothY, velocity: 0, isValid: true, timestamp };
     }
 
-    // Calculate velocity from recent positions
     const velocity = this.calculateVelocity();
+
+    // Track peak velocity (absolute value, since direction changes mid-rep)
+    const absVel = Math.abs(velocity);
+    if (absVel > this.peakVelocity) {
+      this.peakVelocity = absVel;
+    }
 
     return {
       x: smoothX,
@@ -66,6 +85,23 @@ export class VelocityCalculator {
   }
 
   /**
+   * Get the peak velocity seen since reset() or startOfRep().
+   * Research: PV is the most robust velocity metric across all intensity zones
+   * (Grossi 2026: PV r=0.91 at 1-RM vs MV ρ=0.65).
+   */
+  getPeakVelocity(): number {
+    return this.peakVelocity;
+  }
+
+  /**
+   * Mark the start of a new rep — resets peak velocity tracking.
+   */
+  startOfRep(): void {
+    this.peakVelocity = 0;
+    this.repStartFrame = this.positions.length;
+  }
+
+  /**
    * Get the current bar path (all recent positions).
    */
   getPath(): BarPosition[] {
@@ -74,6 +110,7 @@ export class VelocityCalculator {
       y: p.y,
       velocity: i > 0 ? this.calculateVelocityAt(i) : 0,
       isValid: true,
+      timestamp: p.timestamp,
     }));
   }
 
@@ -84,19 +121,23 @@ export class VelocityCalculator {
     this.positions = [];
     this.kalmanX = { estimate: 0, error: 1, processNoise: 0.01, measurementNoise: 0.1 };
     this.kalmanY = { estimate: 0, error: 1, processNoise: 0.01, measurementNoise: 0.1 };
+    this.peakVelocity = 0;
+    this.repStartFrame = 0;
   }
 
-  // --- Private: Kalman filter ---
+  // --- Private: Adaptive Kalman filter ---
 
   private kalmanUpdate(
     state: { estimate: number; error: number; processNoise: number; measurementNoise: number },
-    measurement: number
+    measurement: number,
+    adaptiveMeasurementNoise: number
   ): number {
     // Predict
     const predictedError = state.error + state.processNoise;
 
-    // Update
-    const kalmanGain = predictedError / (predictedError + state.measurementNoise);
+    // Update with adaptive measurement noise
+    const effectiveNoise = Math.max(adaptiveMeasurementNoise, state.measurementNoise);
+    const kalmanGain = predictedError / (predictedError + effectiveNoise);
     state.estimate = state.estimate + kalmanGain * (measurement - state.estimate);
     state.error = (1 - kalmanGain) * predictedError;
 
@@ -106,8 +147,8 @@ export class VelocityCalculator {
   // --- Private: Velocity calculation ---
 
   /**
-   * Calculate instantaneous velocity from the most recent positions.
-   * Uses a rolling window for smoothing.
+   * Calculate signed velocity from the most recent positions.
+   * Positive = bar moving down (image Y increases) = eccentric for most lifts.
    */
   private calculateVelocity(): number {
     const n = this.positions.length;
@@ -117,25 +158,19 @@ export class VelocityCalculator {
     const recent = this.positions[n - 1];
     const past = this.positions[n - 1 - window];
 
-    const dt = (recent.timestamp - past.timestamp) / 1000; // seconds
+    const dt = (recent.timestamp - past.timestamp) / 1000;
     if (dt <= 0) return 0;
 
-    const dx = recent.x - past.x;
-    const dy = recent.y - past.y;
-    const pixelDistance = Math.sqrt(dx * dx + dy * dy);
-
-    // Convert to real-world velocity
+    // Signed vertical velocity (Y-only eliminates horizontal noise)
+    const dyPx = recent.y - past.y;
     if (this.pixelsPerMm <= 0) return 0;
 
-    const mmDistance = pixelDistance / this.pixelsPerMm;
+    const mmDistance = dyPx / this.pixelsPerMm;
     const metersDistance = mmDistance / 1000;
 
     return metersDistance / dt;
   }
 
-  /**
-   * Calculate velocity at a specific position index.
-   */
   private calculateVelocityAt(index: number): number {
     if (index <= 0 || index >= this.positions.length) return 0;
 
@@ -146,12 +181,9 @@ export class VelocityCalculator {
     const dt = (current.timestamp - past.timestamp) / 1000;
     if (dt <= 0) return 0;
 
-    const dx = current.x - past.x;
-    const dy = current.y - past.y;
-    const pixelDistance = Math.sqrt(dx * dx + dy * dy);
-
+    const dyPx = current.y - past.y;
     if (this.pixelsPerMm <= 0) return 0;
 
-    return (pixelDistance / this.pixelsPerMm / 1000) / dt;
+    return (dyPx / this.pixelsPerMm / 1000) / dt;
   }
 }

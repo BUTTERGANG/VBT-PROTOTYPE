@@ -29,6 +29,8 @@ export interface FrameAnalysis {
   frameNumber: number;
   barbell: BarbellDetection | null;
   pose: PoseLandmarks | null;
+  /** Which detector produced `barbell` — 'heuristic' = no trained model */
+  detectionMode: 'model' | 'heuristic';
 }
 
 /** Calibration data for converting pixels to real-world units */
@@ -86,8 +88,10 @@ export interface VisionError {
 export interface VisionConfig {
   /** Target plate diameter in mm. Default 450 (Olympic bumper) */
   plateDiameterMm: number;
-  /** Camera facing mode */
+  /** Preferred camera facing mode (mobile). Ignored when deviceId is set. */
   facingMode: 'environment' | 'user';
+  /** Specific device ID from enumerateDevices() — overrides facingMode */
+  deviceId?: string;
   /** Target FPS for processing */
   targetFps: number;
   /** Minimum detection confidence threshold */

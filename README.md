@@ -235,6 +235,11 @@ The GitHub Actions workflow (`.github/workflows/replit-parity.yml`) runs on Node
 
 Sprint tasks live in `SCRUM/`. See `SCRUM/Sprint_View.md` for current sprint status and `SCRUM/Backlog/` for upcoming work. Agent protocol is defined in `SCRUM/CLAUDE.md`.
 
+## Documentation
+
+- `docs/scrum-board.md` — Sprint status and backlog
+- `docs/research-insights.md` — VBT validation research: accuracy benchmarks, rep detection targets, and development priorities derived from 4 peer-reviewed studies
+
 ## Reference Repos
 
 - [squatsandsciencelabs/OpenBarbell-V3](https://github.com/squatsandsciencelabs/OpenBarbell-V3) — Primary firmware reference

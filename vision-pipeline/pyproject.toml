@@ -1,0 +1,27 @@
+[project]
+name = "vbt-vision-pipeline"
+version = "0.1.0"
+description = "Vision-based velocity validation pipeline for VBT Tracker"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "opencv-python-headless>=4.10",
+    "scipy>=1.13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+yolo = [
+    "ultralytics>=8.0",
+    "roboflow>=1.1",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

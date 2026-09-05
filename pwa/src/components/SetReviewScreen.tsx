@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useLiftStore } from '../store/liftStore';
 import { estimate1RM } from '../utils/oneRMCalculator';
 import type { VelocityReading, Rep, ZoneResult } from '../types';
@@ -27,14 +28,19 @@ function zoneColor(zone: ZoneResult | string): string {
 }
 
 export function SetReviewScreen({ data, onSave, onDiscard, onStartWorkout }: SetReviewScreenProps) {
+  const location = useLocation();
   const { completedReps, exercise: storeExercise } = useLiftStore();
 
-  const initialExercise = data?.exercise ?? storeExercise;
-  const initialWeight = data?.weight ?? 0;
-  const initialReps = data?.reps ?? completedReps;
-  const videoUrl = data?.videoUrl ?? null;
-  const barPath = data?.barPath ?? [];
-  const prevSet = data?.prevSet;
+  // Accept data from router state (camera flow) or prop (direct embed)
+  const routerData = (location.state as { data?: SetReviewData } | null)?.data;
+  const resolvedData = data ?? routerData;
+
+  const initialExercise = resolvedData?.exercise ?? storeExercise;
+  const initialWeight = resolvedData?.weight ?? 0;
+  const initialReps = resolvedData?.reps ?? completedReps;
+  const videoUrl = resolvedData?.videoUrl ?? null;
+  const barPath = resolvedData?.barPath ?? [];
+  const prevSet = resolvedData?.prevSet;
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);

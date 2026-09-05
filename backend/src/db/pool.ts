@@ -3,15 +3,12 @@
 // Uses @neondatabase/serverless for HTTP-based connections (no TCP pool needed)
 // Docs: https://github.com/neondatabase/serverless
 
-import { neon, neonConfig } from '@neondatabase/serverless';
+import { neon } from '@neondatabase/serverless';
 
-// Enable connection caching for better performance in serverless environments
-neonConfig.fetchConnectionCache = true;
-
-// Ensure DATABASE_URL has sslmode=require for Neon
-const rawUrl = process.env.DATABASE_URL;
+// Accept either DATABASE_URL or NEONDB secret name
+const rawUrl = process.env.NEONDB || process.env.DATABASE_URL || null;
 if (!rawUrl) {
-  console.warn('DATABASE_URL not set — API routes will return 503');
+  console.warn('No database URL found (NEONDB or DATABASE_URL) — API routes will return 503');
 }
 
 // Append sslmode=require if not already present (Neon requires SSL)
@@ -30,7 +27,7 @@ const neonSql = databaseUrl ? neon(databaseUrl) : null;
 // Wrapper: defers "no DATABASE_URL" error to query time so the server
 // can start (health check, static file serving) without a database.
 function sql(strings: TemplateStringsArray, ...values: any[]) {
-  if (!neonSql) throw new Error('DATABASE_URL not configured');
+  if (!neonSql) throw new Error('Database not configured — set NEONDB or DATABASE_URL');
   return neonSql(strings, ...values);
 }
 

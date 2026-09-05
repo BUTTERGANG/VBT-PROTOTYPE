@@ -116,6 +116,33 @@ export class VisionManager {
     return { ...this.calibration };
   }
 
+  /**
+   * Current barbell-detection mode. 'heuristic' means no trained model was
+   * available — UI should surface a "heuristic mode" indicator because
+   * bar-path accuracy is degraded.
+   */
+  getDetectionMode(): 'model' | 'heuristic' {
+    return this.barbellDetector.isUsingModel() ? 'model' : 'heuristic';
+  }
+
+  updateConfig(partial: Partial<VisionConfig>): void {
+    this.config = { ...this.config, ...partial };
+  }
+
+  /** Move the camera stream to a new video element (e.g. when phase changes swap a hidden → visible element). */
+  setVideoElement(el: HTMLVideoElement): void {
+    if (el === this.video) return;
+    this.video = el;
+    if (this.stream) {
+      el.srcObject = this.stream;
+      el.play().catch(() => {});
+      if (this.canvas) {
+        this.canvas.width = el.videoWidth || 1280;
+        this.canvas.height = el.videoHeight || 720;
+      }
+    }
+  }
+
   getVideoElement(): HTMLVideoElement | null {
     return this.video;
   }
@@ -155,11 +182,20 @@ export class VisionManager {
       this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
       if (!this.ctx) throw this.makeError('camera-unavailable', 'Could not create canvas context');
 
-      // Load ML models in parallel
-      await Promise.all([
-        this.poseEstimator.initialize(),
-        this.barbellDetector.initialize(),
-      ]);
+      // Load ML models with an 8-second timeout — camera starts even if
+      // CDN is unreachable; barbell detector falls back to contour-based detection
+      const modelTimeout = new Promise<void>(resolve => setTimeout(resolve, 8000));
+      try {
+        await Promise.race([
+          Promise.all([
+            this.poseEstimator.initialize(),
+            this.barbellDetector.initialize(),
+          ]),
+          modelTimeout,
+        ]);
+      } catch {
+        console.warn('[VisionManager] ML model load failed — using fallback detection');
+      }
 
       // Request camera
       this.setState('requesting-camera');
@@ -210,6 +246,7 @@ export class VisionManager {
     this.lastFrameTime = performance.now();
     this.repDetector.reset();
     this.velocityCalculator.reset();
+    this.barbellDetector.reset();
     this.processFrame();
   }
 
@@ -247,14 +284,28 @@ export class VisionManager {
       throw this.makeError('camera-unavailable', 'getUserMedia not supported');
     }
 
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: this.config.facingMode,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-      audio: false,
-    });
+    const baseConstraints = { width: { ideal: 1280 }, height: { ideal: 720 } };
+
+    if (this.config.deviceId) {
+      // Specific camera selected by the user (works on desktop + mobile)
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: this.config.deviceId }, ...baseConstraints },
+        audio: false,
+      });
+    } else {
+      // Try rear camera (mobile), fall back to any available camera (desktop)
+      try {
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: this.config.facingMode, ...baseConstraints },
+          audio: false,
+        });
+      } catch {
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          video: baseConstraints,
+          audio: false,
+        });
+      }
+    }
 
     if (!this.video) throw this.makeError('camera-unavailable', 'Video element not set');
 
@@ -299,17 +350,17 @@ export class VisionManager {
     // Draw current video frame to canvas
     this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
 
-    // Run detection and pose estimation in parallel
-    const [barbell, pose] = await Promise.all([
-      this.barbellDetector.detect(this.canvas),
-      this.poseEstimator.estimate(this.video),
-    ]);
+    // Run pose estimation first: in heuristic mode the barbell detector
+    // blends wrist-midpoint position into its output.
+    const pose = await this.poseEstimator.estimate(this.video);
+    const barbell = await this.barbellDetector.detect(this.canvas, pose);
 
     const analysis: FrameAnalysis = {
       timestamp: Date.now(),
       frameNumber: this.frameNumber,
       barbell,
       pose,
+      detectionMode: this.getDetectionMode(),
     };
 
     this.notifyAnalysis(analysis);
@@ -319,7 +370,8 @@ export class VisionManager {
       const position = this.velocityCalculator.processDetection(
         barbell.centerX,
         barbell.centerY,
-        analysis.timestamp
+        analysis.timestamp,
+        barbell.confidence
       );
       if (position) {
         this.notifyPosition(position);
@@ -328,6 +380,8 @@ export class VisionManager {
         const rep = this.repDetector.addPosition(position);
         if (rep) {
           this.notifyRep(rep);
+          // Reset peak velocity tracking for next rep
+          this.velocityCalculator.startOfRep();
         }
       }
     }

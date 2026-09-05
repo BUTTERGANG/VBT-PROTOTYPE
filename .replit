@@ -19,8 +19,19 @@ localPort = 3001
 externalPort = 80
 
 [[ports]]
+localPort = 5173
+externalPort = 5173
+
+[[ports]]
+localPort = 5174
+externalPort = 3000
+
+[[ports]]
 localPort = 8000
 externalPort = 8000
 
 [agent]
 expertMode = true
+
+[env]
+CLAUDE_CONFIG_DIR = "/home/runner/workspace/.local/state/claude"

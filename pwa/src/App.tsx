@@ -13,10 +13,11 @@ import { WorkoutScreen } from './components/WorkoutScreen';
 import { SetReviewScreen } from './components/SetReviewScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { SyncIndicator } from './components/SyncIndicator';
-import { OnboardingScreen } from './components/OnboardingScreen';
 import { VideoLibraryScreen } from './components/VideoLibraryScreen';
 import { HomeScreen } from './components/HomeScreen';
+import { AuthScreen } from './components/AuthScreen';
 import { usePWAInstall } from './hooks/usePWAInstall';
+import { useAuthStore } from './store/authStore';
 import type { Rep } from './types';
 
 // ─── Tab definitions ────────────────────────────────────────────────────
@@ -108,9 +109,10 @@ function AppContent() {
   const { isInstallable, promptInstall, showIOSBanner, dismissIOSBanner } = usePWAInstall();
   const isDesktop = useMediaQuery(1024);
 
-  const [onboarded, setOnboarded] = useState(() => {
-    try { return localStorage.getItem('vbt_onboarded') === 'true'; } catch { return false; }
-  });
+  const { user, token, validateToken } = useAuthStore();
+
+  // Validate stored token on app boot
+  useEffect(() => { validateToken(); }, []);
 
   // Persisted workout sets (survive navigation, lost on tab close which is fine)
   const [workoutSets] = useState(loadWorkoutSets);
@@ -137,17 +139,10 @@ function AppContent() {
     navigate('/camera');
   }, [navigate]);
 
-  // ── Onboarding guard ─────────────────────────────────────────────────
+  // ── Auth guard ────────────────────────────────────────────────────────
 
-  if (!onboarded) {
-    return (
-      <OnboardingScreen
-        onComplete={(_profile) => {
-          try { localStorage.setItem('vbt_onboarded', 'true'); } catch {}
-          setOnboarded(true);
-        }}
-      />
-    );
+  if (!token || !user) {
+    return <AuthScreen />;
   }
 
   const currentPath = location.pathname;
