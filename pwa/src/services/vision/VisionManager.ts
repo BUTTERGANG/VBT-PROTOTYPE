@@ -60,7 +60,10 @@ export class VisionManager {
     this.poseEstimator = new PoseEstimator();
     this.barbellDetector = new BarbellDetector(config.minConfidence);
     this.velocityCalculator = new VelocityCalculator(config.smoothingWindow);
-    this.repDetector = new RepDetector();
+    this.repDetector = new RepDetector({
+      minRepDistanceMm: config.minRepDistanceMm,
+      directionThreshold: config.movementThreshold,
+    });
     this.calibration = {
       plateDiameterMm: config.plateDiameterMm,
       pixelsPerMm: 0,
@@ -220,6 +223,7 @@ export class VisionManager {
     this.calibration.pixelsPerMm = plateWidthPixels / this.calibration.plateDiameterMm;
     this.calibration.isCalibrated = true;
     this.velocityCalculator.setCalibration(this.calibration.pixelsPerMm);
+    this.repDetector.setCalibration(this.calibration.pixelsPerMm);
     this.setState('calibrated');
   }
 
@@ -230,6 +234,7 @@ export class VisionManager {
     this.calibration.pixelsPerMm = pixelsPerMm;
     this.calibration.isCalibrated = true;
     this.velocityCalculator.setCalibration(pixelsPerMm);
+    this.repDetector.setCalibration(pixelsPerMm);
     this.setState('calibrated');
   }
 
@@ -370,7 +375,7 @@ export class VisionManager {
       const position = this.velocityCalculator.processDetection(
         barbell.centerX,
         barbell.centerY,
-        analysis.timestamp,
+        now,
         barbell.confidence
       );
       if (position) {

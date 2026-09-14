@@ -39,7 +39,6 @@ src/
 └── utils/
     ├── iosDetection.ts      # iOS capability checks, install banner logic
     ├── oneRMCalculator.ts   # e1RM estimation (M1, M2, M3 models)
-    ├── velocityProcessor.ts # Velocity smoothing + filtering
     └── zoneCalculator.ts    # Zone result computation from config
 ```
 

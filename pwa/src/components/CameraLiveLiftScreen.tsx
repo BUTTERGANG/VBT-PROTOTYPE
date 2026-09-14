@@ -6,7 +6,7 @@ import { useLiftStore } from '../store/liftStore';
 import { VisionManager, DEFAULT_VISION_CONFIG } from '../services/vision';
 import type { VisionError, BarPosition } from '../services/vision';
 import { feedbackEngine } from '../services/audio/FeedbackEngine';
-import { getExerciseConfig, getExerciseList, type ExerciseCategory } from '../services/vision/exerciseConfigs';
+import { getExerciseConfig, getExerciseList, exerciseToVisionOverrides, type ExerciseCategory } from '../services/vision/exerciseConfigs';
 import { getLiftingModeConfig, type LiftingMode } from '../services/vision/liftingModes';
 import { acceptVideoFile, SetRecorder } from '../services/recording/SetRecorder';
 import type { VelocityReading, ZoneResult, Rep } from '../types';
@@ -87,6 +87,10 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const collectedReps = useRef<Rep[]>([]);
   const repReadingsBuffer = useRef<VelocityReading[]>([]);
+  // Calibration lock: after a stable measurement is locked in, stop re-deriving
+  // pixelsPerMm every frame (which injected jitter into every velocity reading).
+  const isCalibratedRef = useRef(false);
+  const calibCandidateRef = useRef<{ pw: number; frames: number } | null>(null);
   const [barPath, setBarPath] = useState<BarPosition[]>([]);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
@@ -135,8 +139,8 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
       try {
         const vm = VisionManager.getInstance({
           ...DEFAULT_VISION_CONFIG,
+          ...exerciseToVisionOverrides(exerciseConfig),
           plateDiameterMm: visionSettings.plateDiameterMm,
-          movementThreshold: exerciseConfig.minRepDisplacement / 20,
           targetFps: getRecommendedFps(),
         });
         vm.updateConfig({
@@ -195,13 +199,13 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
         });
 
         vm.subscribeRep((rep) => {
-          // Build a Rep from the completed rep's positions
-          const repPositions = rep.positions;
-          const velocities = repPositions.map(p => Math.abs(p.velocity));
-          const meanVelocity = velocities.length > 0
-            ? velocities.reduce((a, b) => a + b, 0) / velocities.length
-            : 0;
-          const peakVelocity = velocities.length > 0 ? Math.max(...velocities) : 0;
+          // Build a Rep from the completed rep's positions.
+          // Mean and peak velocity come from the RepDetector, which computes
+          // them over the CONCENTRIC phase only (the standard VBT window) —
+          // averaging eccentric + concentric together would overstate MV and
+          // risk reading the eccentric peak as PV.
+          const meanVelocity = rep.meanConcentricVelocity;
+          const peakVelocity = rep.peakConcentricVelocity;
           const zone = calculateZone(meanVelocity, zoneConfig);
 
           const newRep: Rep = {
@@ -218,16 +222,37 @@ export default function CameraLiveLiftScreen({ initialInputMode }: { initialInpu
         });
 
         vm.subscribeAnalysis((analysis) => {
+          if (isCalibratedRef.current) {
+            // Calibration locked — just reflect detection presence.
+            if (!analysis.barbell) setPlateStatus('searching');
+            return;
+          }
+
           if (analysis.barbell && analysis.barbell.confidence > 0.4) {
             const pw = Math.max(analysis.barbell.width, analysis.barbell.height);
-            // Auto-calibrate on every confident detection — refines continuously
-            vm.calibrateFromDetection(pw);
-            updateVisionSettings({
-              isCalibrated: true,
-              pixelsPerMm: pw / visionSettings.plateDiameterMm,
-            });
-            setPlateStatus('locked');
+            // Require the measured plate width to be consistent across a few
+            // frames before locking, so a single noisy/tilted/partly-occluded
+            // detection can't set a bad scale. Then lock permanently.
+            const cand = calibCandidateRef.current;
+            const stable = cand && Math.abs(cand.pw - pw) / cand.pw < 0.05;
+            if (stable) {
+              calibCandidateRef.current = { pw, frames: cand.frames + 1 };
+              if (cand.frames + 1 >= 3) {
+                // Lock in calibration and stop re-deriving it every frame.
+                vm.calibrateFromDetection(pw);
+                updateVisionSettings({
+                  isCalibrated: true,
+                  pixelsPerMm: pw / visionSettings.plateDiameterMm,
+                });
+                isCalibratedRef.current = true;
+                calibCandidateRef.current = null;
+                setPlateStatus('locked');
+              }
+            } else {
+              calibCandidateRef.current = { pw, frames: 1 };
+            }
           } else if (!analysis.barbell) {
+            calibCandidateRef.current = null;
             setPlateStatus('searching');
           }
         });

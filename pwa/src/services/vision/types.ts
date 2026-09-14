@@ -100,6 +100,8 @@ export interface VisionConfig {
   smoothingWindow: number;
   /** Minimum displacement in pixels to consider movement */
   movementThreshold: number;
+  /** Minimum rep amplitude in mm (drives rep-distance gate). */
+  minRepDistanceMm: number;
   /** Velocity drop threshold for fatigue detection (0-1) */
   fatigueThreshold: number;
 }
@@ -111,5 +113,6 @@ export const DEFAULT_VISION_CONFIG: VisionConfig = {
   minConfidence: 0.5,
   smoothingWindow: 5,
   movementThreshold: 3,
+  minRepDistanceMm: 150,
   fatigueThreshold: 0.2,
 };

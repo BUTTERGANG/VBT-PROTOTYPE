@@ -6,6 +6,23 @@ import { blendBarPosition, wristMidpoint, type PoseLandmarks } from './barFallba
 
 export const MODEL_URL = '/models/barbell-detector/model.json';
 
+/** Intersection-over-Union of two boxes (uses centerX/centerY/width/height). */
+function iou(
+  a: { centerX: number; centerY: number; width: number; height: number },
+  b: { centerX: number; centerY: number; width: number; height: number },
+): number {
+  const ax0 = a.centerX - a.width / 2, ay0 = a.centerY - a.height / 2;
+  const ax1 = a.centerX + a.width / 2, ay1 = a.centerY + a.height / 2;
+  const bx0 = b.centerX - b.width / 2, by0 = b.centerY - b.height / 2;
+  const bx1 = b.centerX + b.width / 2, by1 = b.centerY + b.height / 2;
+  const ix0 = Math.max(ax0, bx0), iy0 = Math.max(ay0, by0);
+  const ix1 = Math.min(ax1, bx1), iy1 = Math.min(ay1, by1);
+  const iw = Math.max(0, ix1 - ix0), ih = Math.max(0, iy1 - iy0);
+  const inter = iw * ih;
+  const union = a.width * a.height + b.width * b.height - inter;
+  return union <= 0 ? 0 : inter / union;
+}
+
 /**
  * Detects barbell endcaps in video frames.
  *
@@ -31,6 +48,9 @@ export class BarbellDetector {
   private fallbackDetector: ContourPlateDetector;
   /** Set once when the model is found missing — never spam the console */
   private warnedModelMissing = false;
+  /** Once the initial mode decision is made (model vs heuristic), pin it so a
+   *  late-resolving model load can't silently switch the velocity source mid-set. */
+  private modePinned = false;
 
   // Temporal smoothing state
   private smoothedX: number | null = null;
@@ -68,6 +88,10 @@ export class BarbellDetector {
         );
       }
     }
+    // The mode decision is final once initialize() returns (or the caller's
+    // timeout fires). Pin it so a model that resolves AFTER the 8s ceiling
+    // cannot silently flip the app from heuristic -> model mid-set.
+    this.modePinned = true;
   }
 
   /**
@@ -141,30 +165,55 @@ export class BarbellDetector {
       const predictions = this.model.predict(tensor) as tf.Tensor;
       const data = await predictions.data();
       const numDetections = predictions.shape[1] ?? 0;
-      let best: BarbellDetection | null = null;
 
+      const detections: Array<BarbellDetection & { score: number }> = [];
       for (let i = 0; i < numDetections; i++) {
         const offset = i * 6;
         const confidence = data[offset + 4];
         if (confidence < this.minConfidence) continue;
 
-        const x = data[offset];
-        const y = data[offset + 1];
-        const w = data[offset + 2];
-        const h = data[offset + 3];
+        let x = data[offset];
+        let y = data[offset + 1];
+        let w = data[offset + 2];
+        let h = data[offset + 3];
 
-        if (!best || confidence > best.confidence) {
-          best = {
-            x: x - w / 2,
-            centerX: x,
-            centerY: y,
-            width: w,
-            height: h,
-            confidence,
-          };
+        // YOLO outputs may be normalized (0-1) or grid-space (0-416). If every
+        // coordinate is <= 1, treat them as normalized and rescale to the 416
+        // grid before the uniform canvas scaling below. This keeps the model
+        // output convention from silently corrupting the mm conversion.
+        if (Math.max(x, y, w, h) <= 1.0) {
+          x *= 416;
+          y *= 416;
+          w *= 416;
+          h *= 416;
         }
+
+        if (w <= 0 || h <= 0) continue;
+
+        detections.push({
+          x: x - w / 2,
+          centerX: x,
+          centerY: y,
+          width: w,
+          height: h,
+          confidence,
+          score: confidence,
+        });
       }
 
+      // Non-max suppression: pick the highest-confidence detection and suppress
+      // any remaining boxes that overlap it heavily (duplicate hits on the same
+      // plate). Previously only the argmax box was used, which could pick a
+      // partial/duplicate detection.
+      const NMS_IOU_THRESHOLD = 0.5;
+      const keep: Array<BarbellDetection & { score: number }> = [];
+      detections.sort((a, b) => b.score - a.score);
+      for (const d of detections) {
+        if (keep.some((k) => iou(k, d) >= NMS_IOU_THRESHOLD)) continue;
+        keep.push(d);
+      }
+
+      const best = keep[0] ?? null;
       if (best) {
         const scaleX = canvas.width / 416;
         const scaleY = canvas.height / 416;
@@ -196,7 +245,8 @@ export class BarbellDetector {
   }
 
   isUsingModel(): boolean {
-    return !this.useFallback;
+    // Once decide() pinned the mode, the model flag is frozen for the session.
+    return !this.useFallback && this.modePinned;
   }
 
   async dispose(): Promise<void> {

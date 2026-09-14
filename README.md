@@ -46,7 +46,6 @@ vbt-tracker/
 │       └── utils/
 │           ├── iosDetection.ts
 │           ├── oneRMCalculator.ts
-│           ├── velocityProcessor.ts
 │           └── zoneCalculator.ts
 ├── backend/                 # Node.js + Express API
 │   └── src/

@@ -30,8 +30,8 @@ export interface ExerciseVisionConfig {
    *  'positive' = bar moves down (unusual, maybe specific rehab exercises)
    */
   concentricDirection: 'negative' | 'positive';
-  /** Minimum pixel displacement to count as a rep */
-  minRepDisplacement: number;
+  /** Minimum real-world bar travel (mm) to count as a rep. Calibration-aware. */
+  minRepDistanceMm: number;
   /** Minimum frame duration for a rep (filters out noise/jerks) */
   minRepDurationFrames: number;
   /** Default target velocity in m/s */
@@ -66,7 +66,7 @@ export const EXERCISE_CONFIGS: Record<ExerciseCategory, ExerciseVisionConfig> = 
     ],
     trackingAxis: 'y',
     concentricDirection: 'negative',
-    minRepDisplacement: 50,
+    minRepDistanceMm: 200,
     minRepDurationFrames: 10,
     defaultTargetVelocity: 0.55,
     defaultTolerance: 0.10,
@@ -89,7 +89,7 @@ export const EXERCISE_CONFIGS: Record<ExerciseCategory, ExerciseVisionConfig> = 
     ],
     trackingAxis: 'y',
     concentricDirection: 'negative',
-    minRepDisplacement: 30,
+    minRepDistanceMm: 150,
     minRepDurationFrames: 8,
     defaultTargetVelocity: 0.45,
     defaultTolerance: 0.08,
@@ -112,7 +112,7 @@ export const EXERCISE_CONFIGS: Record<ExerciseCategory, ExerciseVisionConfig> = 
     ],
     trackingAxis: 'y',
     concentricDirection: 'negative',
-    minRepDisplacement: 40,
+    minRepDistanceMm: 250,
     minRepDurationFrames: 10,
     defaultTargetVelocity: 0.60,
     defaultTolerance: 0.12,
@@ -134,7 +134,7 @@ export const EXERCISE_CONFIGS: Record<ExerciseCategory, ExerciseVisionConfig> = 
     ],
     trackingAxis: 'y',
     concentricDirection: 'negative',
-    minRepDisplacement: 30,
+    minRepDistanceMm: 120,
     minRepDurationFrames: 8,
     defaultTargetVelocity: 0.45,
     defaultTolerance: 0.08,
@@ -157,7 +157,7 @@ export const EXERCISE_CONFIGS: Record<ExerciseCategory, ExerciseVisionConfig> = 
     ],
     trackingAxis: 'y',
     concentricDirection: 'negative',
-    minRepDisplacement: 40,
+    minRepDistanceMm: 300,
     minRepDurationFrames: 5,
     defaultTargetVelocity: 1.20,
     defaultTolerance: 0.20,
@@ -180,7 +180,7 @@ export const EXERCISE_CONFIGS: Record<ExerciseCategory, ExerciseVisionConfig> = 
     ],
     trackingAxis: 'y',
     concentricDirection: 'negative',
-    minRepDisplacement: 40,
+    minRepDistanceMm: 350,
     minRepDurationFrames: 4,
     defaultTargetVelocity: 1.40,
     defaultTolerance: 0.25,
@@ -202,7 +202,7 @@ export const EXERCISE_CONFIGS: Record<ExerciseCategory, ExerciseVisionConfig> = 
     ],
     trackingAxis: 'y',
     concentricDirection: 'negative',
-    minRepDisplacement: 25,
+    minRepDistanceMm: 100,
     minRepDurationFrames: 6,
     defaultTargetVelocity: 0.50,
     defaultTolerance: 0.10,
@@ -223,7 +223,7 @@ export const EXERCISE_CONFIGS: Record<ExerciseCategory, ExerciseVisionConfig> = 
     ],
     trackingAxis: 'y',
     concentricDirection: 'negative',
-    minRepDisplacement: 30,
+    minRepDistanceMm: 150,
     minRepDurationFrames: 8,
     defaultTargetVelocity: 0.50,
     defaultTolerance: 0.10,
@@ -260,9 +260,11 @@ export function getExerciseList(): Array<{ category: ExerciseCategory; label: st
 export function exerciseToVisionOverrides(config: ExerciseVisionConfig): {
   plateDiameterMm?: number;
   movementThreshold?: number;
+  minRepDistanceMm?: number;
 } {
   return {
     plateDiameterMm: config.defaultPlateDiameterMm,
-    movementThreshold: Math.max(2, config.minRepDisplacement / 20),
+    movementThreshold: Math.max(2, config.minRepDistanceMm / 20),
+    minRepDistanceMm: config.minRepDistanceMm,
   };
 }

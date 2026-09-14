@@ -22,6 +22,10 @@ import type { BarPosition } from './types';
  */
 export class VelocityCalculator {
   private positions: Array<{ x: number; y: number; timestamp: number }> = [];
+  /** Raw (pre-Kalman) detections, used ONLY for velocity computation.
+   *  Differentiating smoothed positions damps displacement and systematically
+   *  under-reports bar speed; velocity must come from the less-filtered signal. */
+  private rawPositions: Array<{ x: number; y: number; timestamp: number }> = [];
   private pixelsPerMm: number = 0;
   private smoothingWindow: number;
   private maxPositions: number = 300;
@@ -32,7 +36,6 @@ export class VelocityCalculator {
 
   // Peak velocity tracking (research: PV is most robust metric)
   private peakVelocity = 0;
-  private repStartFrame = 0;
 
   constructor(smoothingWindow: number = 5) {
     this.smoothingWindow = smoothingWindow;
@@ -58,9 +61,13 @@ export class VelocityCalculator {
     const smoothY = this.kalmanUpdate(this.kalmanY, y, adaptiveMeasurementNoise);
 
     this.positions.push({ x: smoothX, y: smoothY, timestamp });
+    // Keep raw detections for velocity — differentiating smoothed positions
+    // damps the signal and under-reports true bar speed.
+    this.rawPositions.push({ x, y, timestamp });
 
     if (this.positions.length > this.maxPositions) {
       this.positions = this.positions.slice(-this.maxPositions);
+      this.rawPositions = this.rawPositions.slice(-this.maxPositions);
     }
 
     if (this.positions.length < 2) {
@@ -98,7 +105,6 @@ export class VelocityCalculator {
    */
   startOfRep(): void {
     this.peakVelocity = 0;
-    this.repStartFrame = this.positions.length;
   }
 
   /**
@@ -119,10 +125,10 @@ export class VelocityCalculator {
    */
   reset(): void {
     this.positions = [];
+    this.rawPositions = [];
     this.kalmanX = { estimate: 0, error: 1, processNoise: 0.01, measurementNoise: 0.1 };
     this.kalmanY = { estimate: 0, error: 1, processNoise: 0.01, measurementNoise: 0.1 };
     this.peakVelocity = 0;
-    this.repStartFrame = 0;
   }
 
   // --- Private: Adaptive Kalman filter ---
@@ -151,12 +157,12 @@ export class VelocityCalculator {
    * Positive = bar moving down (image Y increases) = eccentric for most lifts.
    */
   private calculateVelocity(): number {
-    const n = this.positions.length;
+    const n = this.rawPositions.length;
     const window = Math.min(this.smoothingWindow, n - 1);
     if (window < 1) return 0;
 
-    const recent = this.positions[n - 1];
-    const past = this.positions[n - 1 - window];
+    const recent = this.rawPositions[n - 1];
+    const past = this.rawPositions[n - 1 - window];
 
     const dt = (recent.timestamp - past.timestamp) / 1000;
     if (dt <= 0) return 0;
@@ -172,11 +178,11 @@ export class VelocityCalculator {
   }
 
   private calculateVelocityAt(index: number): number {
-    if (index <= 0 || index >= this.positions.length) return 0;
+    if (index <= 0 || index >= this.rawPositions.length) return 0;
 
     const window = Math.min(this.smoothingWindow, index);
-    const current = this.positions[index];
-    const past = this.positions[index - window];
+    const current = this.rawPositions[index];
+    const past = this.rawPositions[index - window];
 
     const dt = (current.timestamp - past.timestamp) / 1000;
     if (dt <= 0) return 0;
